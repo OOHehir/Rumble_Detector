@@ -26,7 +26,7 @@
 #include "model_metadata.h"
 #include "edge-impulse-sdk/classifier/ei_model_types.h"
 
-const char* ei_classifier_inferencing_categories[] = { "other", "rumble" };
+const char* ei_classifier_inferencing_categories[] = { "other", "trumpet" };
 
 uint8_t ei_dsp_config_3_axes[] = { 0 };
 const uint32_t ei_dsp_config_3_axes_size = 1;
@@ -34,14 +34,14 @@ ei_dsp_config_mfe_t ei_dsp_config_3 = {
     3, // uint32_t blockId
     3, // int implementationVersion
     1, // int length of axes
-    0.01f, // float frame_length
+    0.02f, // float frame_length
     0.01f, // float frame_stride
-    80, // int num_filters
-    512, // int fft_length
-    20, // int low_frequency
-    1000, // int high_frequency
+    40, // int num_filters
+    256, // int fft_length
+    300, // int low_frequency
+    0, // int high_frequency
     101, // int win_size
-    -70 // int noise_floor_db
+    -52 // int noise_floor_db
 };
 
 #define EI_DSP_PARAMS_GENERATED 1

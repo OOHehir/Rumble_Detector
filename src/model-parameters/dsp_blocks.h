@@ -34,7 +34,7 @@ int extract_tflite_features(signal_t *signal, matrix_t *output_matrix, void *con
 const size_t ei_dsp_blocks_size = 1;
 ei_model_dsp_t ei_dsp_blocks[ei_dsp_blocks_size] = {
     { // DSP block 3
-        8000,
+        3960,
         &extract_mfe_features,
         (void*)&ei_dsp_config_3,
         ei_dsp_config_3_axes,

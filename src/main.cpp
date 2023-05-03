@@ -1,4 +1,3 @@
-#include<Arduino.h>
 /* Edge Impulse Arduino examples
  * Copyright (c) 2022 EdgeImpulse Inc.
  *
@@ -21,8 +20,7 @@
  * SOFTWARE.
  */
 
-// If your target is limited in memory remove this macro to save 10K RAM
-#define EIDSP_QUANTIZE_FILTERBANK   0
+
 
 /*
  ** NOTE: If you run into TFLite arena allocation issue.
@@ -39,12 +37,23 @@
  ** If the problem persists then there's not enough memory for this model and application.
  */
 
+// If your target is limited in memory remove this macro to save 10K RAM
+#define EIDSP_QUANTIZE_FILTERBANK   0
+
 /* Includes ---------------------------------------------------------------- */
-#include <Test_inferencing.h>
+#include<Arduino.h>
+#include <trumpet_inferencing.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "driver/i2s.h"
+#include "WAVFileWriter.h"
+#include "SDCard.h"
+#include "stdlib.h"
+#include <cstdio>
+#include "I2SMEMSSampler.h"
+#include "I2SSampler.h"
+#include "esp_heap_caps.h"
 
 static void capture_samples(void* arg);
 static int i2s_deinit(void);
@@ -68,6 +77,36 @@ static signed short sampleBuffer[sample_buffer_size];
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static bool record_status = true;
 
+// are you using an I2S microphone - comment this out if you want to use an analog mic and ADC input
+#define USE_I2S_MIC_INPUT
+#ifdef USE_I2S_MIC_INPUT
+static I2SSampler *input = NULL;
+#endif
+
+//set the gain. 0 = No sound; 1 = No gain; Everything >1 equals more gain depending on the number
+#define SDCARD_WRITING_ENABLED  1 
+
+static int record_buffer_idx = 0;
+static signed short recordBuffer[32000];
+
+#define SDCARD_BUFFER           50*1024
+
+// sdcard (unused, as SDIO is fixed to its Pins)
+#define PIN_NUM_MISO GPIO_NUM_2
+#define PIN_NUM_CLK GPIO_NUM_14
+#define PIN_NUM_MOSI GPIO_NUM_15
+#define PIN_NUM_CS GPIO_NUM_14
+
+//External Blink LED
+#define LED_PIN 21
+
+#define I2S_DATA_SCALING_FACTOR 1
+
+// Variables to store the LED state and the time it was last turned on
+bool ledState = false;
+unsigned long ledTurnedOnAt = 0;
+unsigned long ledDuration = 1;
+
 /**
  * @brief      Arduino setup function
  */
@@ -78,6 +117,21 @@ void setup()
 {
     // put your setup code here, to run once:
     Serial.begin(9600);
+    pinMode(LED_PIN, OUTPUT);
+
+      Serial.println("Checking if ESP32 is using PSRAM:");
+  if(ESP.getPsramSize()){
+    Serial.println("ESP32 is using PSRAM!");
+  }else{
+    Serial.println("ESP32 is not using PSRAM.");
+  }
+
+    // Initialize buzzer on GPIO 13
+const int buzzer_pin = 13;
+ledcSetup(0, 2000, 8); // channel 0, 2000 Hz, 8-bit resolution
+ledcAttachPin(buzzer_pin, 0);
+ledcWrite(0, 0); // initially off
+
     // comment out the below line to cancel the wait for USB connection (needed for native USB)
     while (!Serial);
     Serial.println("Edge Impulse Inferencing Demo");
@@ -94,6 +148,13 @@ void setup()
     ei_printf("\nStarting continious inference in 2 seconds...\n");
     ei_sleep(2000);
 
+#ifdef SDCARD_WRITING_ENABLED
+    ei_printf("Mounting SDCard on /sdcard\n");
+    new SDCard("/sdcard", PIN_NUM_MISO, PIN_NUM_MOSI, PIN_NUM_CLK, PIN_NUM_CS);
+    ei_sleep(200);
+    ei_printf("Mounted SDCard on /sdcard\n");
+#endif
+
     if (microphone_inference_start(EI_CLASSIFIER_RAW_SAMPLE_COUNT) == false) {
         ei_printf("ERR: Could not allocate audio buffer (size %d), this could be due to the window length of your model\r\n", EI_CLASSIFIER_RAW_SAMPLE_COUNT);
         return;
@@ -102,11 +163,37 @@ void setup()
     ei_printf("Recording...\n");
 }
 
+
 /**
  * @brief      Arduino main function. Runs the inferencing loop.
  */
-void loop()
-{
+
+//Buzzer beeps
+void beep(int n_times) {
+  for (int i = 0; i < n_times; i++) {
+    ledcWrite(0, 128); // 50% duty cycle
+    delay(100); // 100 ms beep duration
+    ledcWrite(0, 0); // turn off buzzer
+    delay(100); // 100 ms pause between beeps
+  }
+}
+
+
+// Function to check if the LED should be turned off
+void updateLedState() {
+    if (ledState) {
+        // blink the LED three times quickly
+        for (int i = 0; i < 3; i++) {
+            digitalWrite(LED_PIN, HIGH);
+            delay(100);
+            digitalWrite(LED_PIN, LOW);
+            delay(100);
+        }
+        ledState = false; // Update ledState to indicate that the blinking is complete
+    }
+}
+
+void loop() {
     bool m = microphone_inference_record();
     if (!m) {
         ei_printf("ERR: Failed to record audio...\n");
@@ -134,6 +221,56 @@ void loop()
         ei_printf_float(result.classification[ix].value);
         ei_printf("\n");
     }
+    // Check if the first classification value is higher than 0.5
+    if (result.classification[1].value > 0.5) {
+        ledState = true; // Set ledState to true to initiate the blinking sequence
+    }
+
+    // Update the LED state
+    updateLedState();
+
+
+#ifdef SDCARD_WRITING_ENABLED
+    static int file_idx = 0;
+    static int file_size = 0;
+    static FILE *fp = NULL;
+    static WAVFileWriter *writer = NULL;
+
+    if (result.classification[1].value > 0.7 && writer == NULL)
+    {
+        char file_name[100];
+        //const char* fname = "/sdcard/test.wav";
+        sprintf(file_name, "/sdcard/test%d.wav", file_idx);
+        ei_printf("writing audio at %s\n", file_name);
+        // open the file on the sdcard
+        fp = fopen(file_name, "wb");
+        // create a new wave file writer
+        writer = new WAVFileWriter(fp, EI_CLASSIFIER_FREQUENCY);
+    }
+
+    if (writer != NULL)
+    {
+        // write buffer
+        writer->write(recordBuffer, record_buffer_idx);
+        file_size += record_buffer_idx;
+
+        if (file_size>=EI_CLASSIFIER_RAW_SAMPLE_COUNT*10)
+        {
+            // and finish the writing
+            writer->finish();
+            fclose(fp);
+            delete writer;
+            file_idx++;
+            fp = NULL;
+            writer = NULL;
+            file_size = 0;
+        }
+    }
+
+    // reset recording buffer
+    record_buffer_idx = 0;
+#endif
+
 #if EI_CLASSIFIER_HAS_ANOMALY == 1
     ei_printf("    anomaly score: ");
     ei_printf_float(result.anomaly);
@@ -141,10 +278,19 @@ void loop()
 #endif
 }
 
+
 static void audio_inference_callback(uint32_t n_bytes)
 {
     for(int i = 0; i < n_bytes>>1; i++) {
         inference.buffer[inference.buf_count++] = sampleBuffer[i];
+
+#ifdef SDCARD_WRITING_ENABLED
+    if (record_buffer_idx < EI_CLASSIFIER_RAW_SAMPLE_COUNT * 10) {
+        recordBuffer[record_buffer_idx++] = sampleBuffer[i];
+    } else {
+        ei_printf("Warning: Record buffer is full, skipping sample\n");
+    }
+#endif
 
         if(inference.buf_count >= inference.n_samples) {
           inference.buf_count = 0;
@@ -153,8 +299,34 @@ static void audio_inference_callback(uint32_t n_bytes)
     }
 }
 
+#ifdef USE_I2S_MIC_INPUT
 static void capture_samples(void* arg) {
+  const int32_t i2s_bytes_to_read = (uint32_t)arg;
+  size_t i2s_samples_to_read = i2s_bytes_to_read>>1;
 
+  input->start();
+
+  while (record_status) {
+    int samples_read = input->read(sampleBuffer, i2s_samples_to_read);
+    
+    // Scale the data
+    for (int x = 0; x < i2s_samples_to_read; x++) {
+        sampleBuffer[x] = (int16_t)(sampleBuffer[x]) * I2S_DATA_SCALING_FACTOR;
+    }
+
+    if (record_status) {
+        audio_inference_callback(i2s_bytes_to_read);
+    }
+    else {
+        break;
+    }
+  }
+
+  input->stop();
+  vTaskDelete(NULL);
+}
+#else
+static void capture_samples(void* arg) {
   const int32_t i2s_bytes_to_read = (uint32_t)arg;
   size_t bytes_read = i2s_bytes_to_read;
 
@@ -173,7 +345,7 @@ static void capture_samples(void* arg) {
 
         // scale the data (otherwise the sound is too quiet)
         for (int x = 0; x < i2s_bytes_to_read/2; x++) {
-            sampleBuffer[x] = (int16_t)(sampleBuffer[x]) * 8;
+            sampleBuffer[x] = (int16_t)(sampleBuffer[x]) * 11;
         }
 
         if (record_status) {
@@ -186,6 +358,7 @@ static void capture_samples(void* arg) {
   }
   vTaskDelete(NULL);
 }
+#endif
 
 /**
  * @brief      Init inferencing struct and setup/start PDM
@@ -196,7 +369,8 @@ static void capture_samples(void* arg) {
  */
 static bool microphone_inference_start(uint32_t n_samples)
 {
-    inference.buffer = (int16_t *)malloc(n_samples * sizeof(int16_t));
+    inference.buffer = (int16_t *)heap_caps_malloc(n_samples * sizeof(int16_t), MALLOC_CAP_SPIRAM);
+
 
     if(inference.buffer == NULL) {
         return false;
@@ -214,7 +388,7 @@ static bool microphone_inference_start(uint32_t n_samples)
 
     record_status = true;
 
-    xTaskCreate(capture_samples, "CaptureSamples", 1024 * 32, (void*)sample_buffer_size, 10, NULL);
+    xTaskCreate(capture_samples, "CaptureSamples", 1024 * 16, (void*)sample_buffer_size, 10, NULL);
 
     return true;
 }
@@ -252,10 +426,39 @@ static int microphone_audio_signal_get_data(size_t offset, size_t length, float 
 static void microphone_inference_end(void)
 {
     i2s_deinit();
-    ei_free(inference.buffer);
+    heap_caps_free(inference.buffer);
+
 }
 
+#ifdef USE_I2S_MIC_INPUT
+static int i2s_init(uint32_t sampling_rate) {
+    // i2s config for reading from I2S
+    i2s_config_t i2s_mic_Config = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
+        .sample_rate = sampling_rate,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
+        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+        .communication_format = I2S_COMM_FORMAT_I2S,
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL2,
+        .dma_buf_count = 4,
+        .dma_buf_len = 1024,
+        .use_apll = true,
+        .tx_desc_auto_clear = false,
+        .fixed_mclk = 0};
 
+    // i2s microphone pins
+    i2s_pin_config_t i2s_mic_pins = {
+        .mck_io_num = I2S_PIN_NO_CHANGE,
+        .bck_io_num = 18,
+        .ws_io_num = 5,
+        .data_out_num = I2S_PIN_NO_CHANGE,
+        .data_in_num = 19
+    };
+
+    input = new I2SMEMSSampler(I2S_NUM_0, i2s_mic_pins, i2s_mic_Config);
+    return ESP_OK;
+}
+#else
 static int i2s_init(uint32_t sampling_rate) {
   // Start listening for audio: MONO @ 8/16KHz
   i2s_config_t i2s_config = {
@@ -272,10 +475,10 @@ static int i2s_init(uint32_t sampling_rate) {
       .fixed_mclk = -1,
   };
   i2s_pin_config_t pin_config = {
-      .bck_io_num = 33,    // IIS_SCLK
-      .ws_io_num = 12,     // IIS_LCLK
+      .bck_io_num = 18,    // IIS_SCLK
+      .ws_io_num = 5,     // IIS_LCLK
       .data_out_num = -1,  // IIS_DSIN
-      .data_in_num = 27,   // IIS_DOUT
+      .data_in_num = 19,   // IIS_DOUT
   };
   esp_err_t ret = 0;
 
@@ -296,7 +499,7 @@ static int i2s_init(uint32_t sampling_rate) {
 
   return int(ret);
 }
-
+#endif
 static int i2s_deinit(void) {
     i2s_driver_uninstall((i2s_port_t)1); //stop & destroy i2s driver
     return 0;
