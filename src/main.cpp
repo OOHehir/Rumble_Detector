@@ -55,6 +55,9 @@
 #include "I2SSampler.h"
 #include "esp_heap_caps.h"
 
+#include <WiFi.h>
+#include <PubSubClient.h>
+
 static void capture_samples(void* arg);
 static int i2s_deinit(void);
 static bool microphone_inference_start(uint32_t n_samples);
@@ -102,6 +105,17 @@ static signed short recordBuffer[32000];
 
 #define I2S_DATA_SCALING_FACTOR 1
 
+// Replace with your network credentials
+const char* ssid = "GL-MT300N-V2-eb1";
+const char* password = "goodlife";
+
+// Replace with your MQTT broker address
+const char* mqtt_server = "192.168.8.115";
+const uint16_t mqtt_port = 1883;
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
 // Variables to store the LED state and the time it was last turned on
 bool ledState = false;
 unsigned long ledTurnedOnAt = 0;
@@ -111,6 +125,28 @@ unsigned long ledDuration = 1;
  * @brief      Arduino setup function
  */
 
+void connectToWiFi() {
+  WiFi.begin(ssid, password);
+  ei_printf("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    ei_printf(".");
+  }
+  ei_printf("\nConnected to Wi-Fi\n");
+}
+
+void connectToMQTT() {
+  client.setServer(mqtt_server, 1883);
+  while (!client.connected()) {
+    ei_printf("Attempting MQTT connection...");
+    if (client.connect("ESP32Client")) {
+      ei_printf("connected\n");
+    } else {
+      ei_printf("failed, rc=%d\n", client.state());
+      delay(5000);
+    }
+  }
+}
 
 
 void setup()
@@ -118,13 +154,6 @@ void setup()
     // put your setup code here, to run once:
     Serial.begin(9600);
     pinMode(LED_PIN, OUTPUT);
-
-      Serial.println("Checking if ESP32 is using PSRAM:");
-  if(ESP.getPsramSize()){
-    Serial.println("ESP32 is using PSRAM!");
-  }else{
-    Serial.println("ESP32 is not using PSRAM.");
-  }
 
     // Initialize buzzer on GPIO 13
 const int buzzer_pin = 13;
@@ -161,12 +190,28 @@ ledcWrite(0, 0); // initially off
     }
 
     ei_printf("Recording...\n");
+
+      // Connect to Wi-Fi
+  connectToWiFi();
+
+  // Connect to MQTT broker
+  connectToMQTT();
 }
 
 
 /**
  * @brief      Arduino main function. Runs the inferencing loop.
  */
+
+
+
+void sendMQTTMessage(const char* topic, const char* message) {
+  if (!client.connected()) {
+    connectToMQTT();
+  }
+  client.publish(topic, message);
+}
+
 
 //Buzzer beeps
 void beep(int n_times) {
@@ -189,6 +234,7 @@ void updateLedState() {
             digitalWrite(LED_PIN, LOW);
             delay(100);
         }
+        sendMQTTMessage("sensor/elephant", "TRUMPET DETECTED");
         ledState = false; // Update ledState to indicate that the blinking is complete
     }
 }
@@ -222,7 +268,7 @@ void loop() {
         ei_printf("\n");
     }
     // Check if the first classification value is higher than 0.5
-    if (result.classification[1].value > 0.5) {
+    if (result.classification[1].value > 0.6) {
         ledState = true; // Set ledState to true to initiate the blinking sequence
     }
 
