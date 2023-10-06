@@ -29,16 +29,42 @@ SDCard::SDCard(const char *mount_point, gpio_num_t miso, gpio_num_t mosi, gpio_n
 
   ESP_LOGI(TAG, "Initializing SD card");
 
+  ////////////////////////////////////
+
+  spi_bus_config_t bus_cfg = {
+      .mosi_io_num = mosi,
+      .miso_io_num = miso,
+      .sclk_io_num = clk,
+      .quadwp_io_num = -1,
+      .quadhd_io_num = -1,
+      .max_transfer_sz = 4000,
+      .flags = 0,
+      .intr_flags = 0};
+  ret = spi_bus_initialize(spi_host_device_t(m_host.slot), &bus_cfg, SPI_DMA_CHAN);
+  if (ret != ESP_OK)
+  {
+    ESP_LOGE(TAG, "Failed to initialize bus.");
+    return;
+  }
+
+  /////////////////////////////
+
   // This initializes the slot without card detect (CD) and write protect (WP) signals.
   // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-  sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-  slot_config.width = 1;
+  // sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+  sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+  slot_config.gpio_cs = cs;
+  slot_config.host_id = spi_host_device_t(m_host.slot);
+  
+  // slot_config.width = 1;
   // Enable internal pullups on enabled pins. The internal pullups
   // are insufficient however, please make sure 10k external pullups are
   // connected on the bus. This is for debug / example purpose only.
-  slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
+  // slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
-  ret = esp_vfs_fat_sdmmc_mount(m_mount_point.c_str(), &m_host, &slot_config, &mount_config, &m_card);
+  // ret = esp_vfs_fat_sdmmc_mount(m_mount_point.c_str(), &m_host, &slot_config, &mount_config, &m_card);
+
+  ret = esp_vfs_fat_sdspi_mount(m_mount_point.c_str(), &m_host, &slot_config, &mount_config, &m_card);
 
   if (ret != ESP_OK)
   {
