@@ -41,7 +41,7 @@
 #define EIDSP_QUANTIZE_FILTERBANK   0
 
 /* Includes ---------------------------------------------------------------- */
-#include<Arduino.h>
+#include <Arduino.h>
 #include <trumpet_inferencing.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -87,23 +87,36 @@ static I2SSampler *input = NULL;
 #endif
 
 //set the gain. 0 = No sound; 1 = No gain; Everything >1 equals more gain depending on the number
-#define SDCARD_WRITING_ENABLED  1 
+#define SDCARD_WRITING_ENABLED
 
 static int record_buffer_idx = 0;
 static signed short recordBuffer[32000];
 
+// #define ELOC_BOARD
+
 #define SDCARD_BUFFER           50*1024
 
 // sdcard (unused, as SDIO is fixed to its Pins)
-#define PIN_NUM_MISO GPIO_NUM_2
-#define PIN_NUM_CLK GPIO_NUM_14
-#define PIN_NUM_MOSI GPIO_NUM_15
-#define PIN_NUM_CS GPIO_NUM_14
+
+#ifdef ELOC_BOARD
+  // For ELOC
+  #define PIN_NUM_MISO GPIO_NUM_2
+  #define PIN_NUM_CLK GPIO_NUM_14
+  #define PIN_NUM_MOSI GPIO_NUM_15
+  #define PIN_NUM_CS GPIO_NUM_14
+#else
+  // For WROVER Board
+  #define PIN_NUM_MISO GPIO_NUM_4
+  #define PIN_NUM_CLK GPIO_NUM_27   // Conflicts with MTMS for JTAG
+  #define PIN_NUM_MOSI GPIO_NUM_18   // Conflicts with MTDO for JTAG
+  #define PIN_NUM_CS GPIO_NUM_25
+#endif
+
 
 //External Blink LED
 #define LED_PIN 21
 
-#define I2S_DATA_SCALING_FACTOR 1
+#define I2S_DATA_SCALING_FACTOR 3
 
 // Replace with your network credentials
 const char* ssid = "GL-MT300N-V2-eb1";
@@ -124,6 +137,12 @@ unsigned long ledDuration = 1;
 /**
  * @brief      Arduino setup function
  */
+
+extern "C"
+{
+  void app_main(void);
+}
+
 
 void connectToWiFi() {
   WiFi.begin(ssid, password);
@@ -152,18 +171,23 @@ void connectToMQTT() {
 void setup()
 {
     // put your setup code here, to run once:
-    Serial.begin(9600);
-    pinMode(LED_PIN, OUTPUT);
+    Serial.begin(115200);
+   // pinMode(LED_PIN, OUTPUT);
 
     // Initialize buzzer on GPIO 13
-const int buzzer_pin = 13;
-ledcSetup(0, 2000, 8); // channel 0, 2000 Hz, 8-bit resolution
-ledcAttachPin(buzzer_pin, 0);
-ledcWrite(0, 0); // initially off
+// const int buzzer_pin = 13;
+// ledcSetup(0, 2000, 8); // channel 0, 2000 Hz, 8-bit resolution
+// ledcAttachPin(buzzer_pin, 0);
+// ledcWrite(0, 0); // initially off
 
     // comment out the below line to cancel the wait for USB connection (needed for native USB)
     while (!Serial);
     Serial.println("Edge Impulse Inferencing Demo");
+
+    Serial.print("Available PSRAM:");
+
+    // Returns 4192123
+    Serial.println(ESP.getPsramSize());
 
     // summary of inferencing settings (from model_metadata.h)
     ei_printf("Inferencing settings:\n");
@@ -192,18 +216,16 @@ ledcWrite(0, 0); // initially off
     ei_printf("Recording...\n");
 
       // Connect to Wi-Fi
-  connectToWiFi();
+  // connectToWiFi();
 
   // Connect to MQTT broker
-  connectToMQTT();
+  // connectToMQTT();
 }
 
 
 /**
  * @brief      Arduino main function. Runs the inferencing loop.
  */
-
-
 
 void sendMQTTMessage(const char* topic, const char* message) {
   if (!client.connected()) {
@@ -234,12 +256,16 @@ void updateLedState() {
             digitalWrite(LED_PIN, LOW);
             delay(100);
         }
-        sendMQTTMessage("sensor/elephant", "TRUMPET DETECTED");
+      // TODO:  sendMQTTMessage("sensor/elephant", "TRUMPET DETECTED");
         ledState = false; // Update ledState to indicate that the blinking is complete
     }
 }
 
+// void app_main(void) {
 void loop() {
+    // setup();
+
+    // initArduino();
     bool m = microphone_inference_record();
     if (!m) {
         ei_printf("ERR: Failed to record audio...\n");
@@ -282,7 +308,9 @@ void loop() {
     static FILE *fp = NULL;
     static WAVFileWriter *writer = NULL;
 
-    if (result.classification[1].value > 0.7 && writer == NULL)
+    // TODO: if (result.classification[1].value > 0.7 && writer == NULL)
+    // Force recording
+    if (writer == NULL)
     {
         char file_name[100];
         //const char* fname = "/sdcard/test.wav";
@@ -324,12 +352,21 @@ void loop() {
 #endif
 }
 
-
+/**
+ * This function is repeatedly called by capture_samples()
+ * When sufficient samples are collected:
+ *  1. inference.buf_ready = 1
+ *  2. microphone_inference_record() is unblocked
+ *  3. classifier is run in main loop() 
+*/
 static void audio_inference_callback(uint32_t n_bytes)
 {
+
+  // ei_printf("audio_inference_callback()\n");
+
     for(int i = 0; i < n_bytes>>1; i++) {
         inference.buffer[inference.buf_count++] = sampleBuffer[i];
-
+        
 #ifdef SDCARD_WRITING_ENABLED
     if (record_buffer_idx < EI_CLASSIFIER_RAW_SAMPLE_COUNT * 10) {
         recordBuffer[record_buffer_idx++] = sampleBuffer[i];
@@ -346,18 +383,29 @@ static void audio_inference_callback(uint32_t n_bytes)
 }
 
 #ifdef USE_I2S_MIC_INPUT
+/**
+ * This is initiated by a task created in microphone_inference_record_start()
+ * When periodically called it:
+ *  1. reads data from I2S DMA buffer, 
+ *  2. scales it
+ *  3. Calls audio_inference_callback() 
+*/
 static void capture_samples(void* arg) {
+
+  ei_printf("capture_samples()\n");
   const int32_t i2s_bytes_to_read = (uint32_t)arg;
-  size_t i2s_samples_to_read = i2s_bytes_to_read>>1;
+  // logical right shift divides a number by 2, throwing out any remainders
+  size_t i2s_samples_to_read = i2s_bytes_to_read >> 1;
 
   input->start();
 
+  // Enter a continual loop to collect new data from I2S
   while (record_status) {
     int samples_read = input->read(sampleBuffer, i2s_samples_to_read);
     
     // Scale the data
     for (int x = 0; x < i2s_samples_to_read; x++) {
-        sampleBuffer[x] = (int16_t)(sampleBuffer[x]) * I2S_DATA_SCALING_FACTOR;
+        sampleBuffer[x] = ((int16_t)sampleBuffer[x]) * I2S_DATA_SCALING_FACTOR;
     }
 
     if (record_status) {
@@ -372,6 +420,7 @@ static void capture_samples(void* arg) {
   vTaskDelete(NULL);
 }
 #else
+  // Not used
 static void capture_samples(void* arg) {
   const int32_t i2s_bytes_to_read = (uint32_t)arg;
   size_t bytes_read = i2s_bytes_to_read;
@@ -440,12 +489,16 @@ static bool microphone_inference_start(uint32_t n_samples)
 }
 
 /**
- * @brief      Wait on new data
+ * @brief  Wait on new data. 
+ *         Blocking function.
+ *         Unblocked by audio_inference_callback() setting inference.buf_ready
  *
  * @return     True when finished
  */
 static bool microphone_inference_record(void)
 {
+  ei_printf("microphone_inference_record()\n");
+
     bool ret = true;
 
     while (inference.buf_ready == 0) {
@@ -493,13 +546,29 @@ static int i2s_init(uint32_t sampling_rate) {
         .fixed_mclk = 0};
 
     // i2s microphone pins
-    i2s_pin_config_t i2s_mic_pins = {
-        .mck_io_num = I2S_PIN_NO_CHANGE,
-        .bck_io_num = 18,
-        .ws_io_num = 5,
-        .data_out_num = I2S_PIN_NO_CHANGE,
-        .data_in_num = 19
-    };
+    // i2s_pin_config_t i2s_mic_pins = {
+    //     .mck_io_num = I2S_PIN_NO_CHANGE,
+    //     .bck_io_num = 18,
+    //     .ws_io_num = 5,
+    //     .data_out_num = I2S_PIN_NO_CHANGE,
+    //     .data_in_num = 19
+    // };
+
+      i2s_pin_config_t i2s_mic_pins = {
+      
+        #ifdef ELOC_BOARD
+          .bck_io_num = 18,   // IIS_SCLK
+          .ws_io_num = 5,    // IIS_LCLK   was 32
+          .data_out_num = -1, // IIS_DSIN
+          .data_in_num = 19,  // IIS_DOUT   was 33
+        #else
+        // WROVER
+          .bck_io_num = 26,   // IIS_SCLK
+          .ws_io_num = 22,    // IIS_LCLK   was 32
+          .data_out_num = -1, // IIS_DSIN
+          .data_in_num = 21,  // IIS_DOUT   was 33
+        #endif
+  };
 
     input = new I2SMEMSSampler(I2S_NUM_0, i2s_mic_pins, i2s_mic_Config);
     return ESP_OK;
