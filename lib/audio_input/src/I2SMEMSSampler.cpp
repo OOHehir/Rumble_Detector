@@ -28,12 +28,21 @@ int I2SMEMSSampler::read(int16_t *samples, int count)
     // read from i2s
     int32_t *raw_samples = (int32_t *)malloc(sizeof(int32_t) * count);
     size_t bytes_read = 0;
+    
     i2s_read(m_i2sPort, raw_samples, sizeof(int32_t) * count, &bytes_read, portMAX_DELAY);
     int samples_read = bytes_read / sizeof(int32_t);
+    
     for (int i = 0; i < samples_read; i++)
     {
-        samples[i] = (raw_samples[i] & 0xFFFFFFF0) >> 11;
+        // For the SPH0645LM4H-B MEMS microphone
+        // The Data Format is I2S, 24-bit, 2’s compliment, MSB first.
+        // The data precision is 18 bits; unused bits are zeros.
+
+        // We need to store data in 16 bits so need to drop lower 16 bits
+        
+        samples[i] = raw_samples[i] >> (32 - 16);
     }
+
     free(raw_samples);
     return samples_read;
 }
