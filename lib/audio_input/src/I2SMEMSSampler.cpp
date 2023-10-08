@@ -30,6 +30,10 @@ int I2SMEMSSampler::read(int16_t *samples, int count)
     size_t bytes_read = 0;
     
     i2s_read(m_i2sPort, raw_samples, sizeof(int32_t) * count, &bytes_read, portMAX_DELAY);
+    
+    // samples_read is the number of 32 bit samples read = 4096
+    // bytes_read is the number of bytes read = 1024
+    
     int samples_read = bytes_read / sizeof(int32_t);
     
     for (int i = 0; i < samples_read; i++)
