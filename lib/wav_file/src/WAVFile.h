@@ -22,6 +22,7 @@ typedef struct _wav_header
   char data_header[4]; // Contains "data"
   int data_bytes = 0;  // Number of bytes in data. Number of samples * num_channels * sample byte size
   // uint8_t bytes[]; // Remainder of wave file is bytes
+  
   _wav_header()
   {
     riff_header[0] = 'R';
@@ -41,9 +42,11 @@ typedef struct _wav_header
     data_header[2] = 't';
     data_header[3] = 'a';
   }
+
   void setSample_rate (int sample_rate) {
     this->sample_rate = sample_rate;
     this->byte_rate = this->sample_rate * this->num_channels * (this->bit_depth / 8);
   }
 } wav_header_t;
+
 #pragma pack(pop)

@@ -1,6 +1,7 @@
 #include "esp_log.h"
 #include "WAVFileWriter.h"
 
+
 static const char *TAG = "WAV";
 
 WAVFileWriter::WAVFileWriter(FILE *fp, int sample_rate)
@@ -10,16 +11,36 @@ WAVFileWriter::WAVFileWriter(FILE *fp, int sample_rate)
   // write out the header - we'll fill in some of the blanks later
   fwrite(&m_header, sizeof(wav_header_t), 1, m_fp);
   m_file_size = sizeof(wav_header_t);
+
+  buffer_active = 0;
+  buffer_idx[0] = 0;
+  buffer_idx[1] = 0;
+  
+  buffer[0][0] = {0};
+  buffer[1][0] = {0};
 }
 
-void WAVFileWriter::write(int16_t *samples, int count)
+void WAVFileWriter::swap_buffers(){
+  // swap buffers
+  if (++buffer_active > 1)
+    buffer_active = 0;
+  
+  buffer_idx[buffer_active] = 0;
+
+}
+
+void WAVFileWriter::write()
 {
-  // write the samples and keep track of the file size so far
-  fwrite(samples, sizeof(int16_t), count, m_fp);
-  m_file_size += sizeof(int16_t) * count;
+  fwrite(buffer[buffer_active], sizeof(int16_t), buffer_idx[buffer_active], m_fp);
+  m_file_size += sizeof(int16_t) * buffer_idx[buffer_active];
+
+  this->swap_buffers();
+
+  buffer_ready_to_save = false;
+
 }
 
-void WAVFileWriter::finish()
+bool WAVFileWriter::finish()
 {
   ESP_LOGI(TAG, "Finishing wav file size: %d", m_file_size);
   // now fill in the header with the correct information and write it again
@@ -27,4 +48,8 @@ void WAVFileWriter::finish()
   m_header.wav_size = m_file_size - 8;
   fseek(m_fp, 0, SEEK_SET);
   fwrite(&m_header, sizeof(wav_header_t), 1, m_fp);
+
+  this->swap_buffers();
+
+  return true;
 }

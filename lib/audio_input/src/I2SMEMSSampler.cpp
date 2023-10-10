@@ -1,5 +1,8 @@
 #include "I2SMEMSSampler.h"
 #include "soc/i2s_reg.h"
+#include "esp_log.h"
+
+static const char *TAG = "I2SMEMSSampler";
 
 I2SMEMSSampler::I2SMEMSSampler(
     i2s_port_t i2s_port,
@@ -9,6 +12,8 @@ I2SMEMSSampler::I2SMEMSSampler(
 {
     m_i2sPins = i2s_pins;
     m_fixSPH0645 = fixSPH0645;
+
+    writer = nullptr;
 }
 
 void I2SMEMSSampler::configureI2S()
@@ -23,10 +28,25 @@ void I2SMEMSSampler::configureI2S()
     i2s_set_pin(m_i2sPort, &m_i2sPins);
 }
 
-int I2SMEMSSampler::read(int16_t *samples, int count)
+bool I2SMEMSSampler::register_wavfilewriter(WAVFileWriter *ext_writer){
+    writer = ext_writer;
+    if (writer == nullptr)
+        return false;
+    else
+        return true;
+}
+
+int I2SMEMSSampler::read(int count)
 {
     // read from i2s
     int32_t *raw_samples = (int32_t *)malloc(sizeof(int32_t) * count);
+
+    if (raw_samples == NULL)
+    {
+        ESP_LOGE(TAG, "Could not allocate memory for samples");
+        return 0;
+    }
+
     size_t bytes_read = 0;
     
     i2s_read(m_i2sPort, raw_samples, sizeof(int32_t) * count, &bytes_read, portMAX_DELAY);
@@ -43,8 +63,13 @@ int I2SMEMSSampler::read(int16_t *samples, int count)
         // The data precision is 18 bits; unused bits are zeros.
 
         // We need to store data in 16 bits so need to drop lower 16 bits
-        
-        samples[i] = raw_samples[i] >> (32 - 16);
+
+        // Store into wav file buffer
+        writer->buffer[writer->buffer_active][writer->buffer_idx[writer->buffer_active]] = raw_samples[i] >> (32 - 16);
+
+        // Store into edge-impulse buffer
+
+
     }
 
     free(raw_samples);

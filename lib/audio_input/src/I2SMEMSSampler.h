@@ -1,12 +1,18 @@
 #pragma once
 
 #include "I2SSampler.h"
+#include "WAVFileWriter.h"
+
+// #ifdef SDCARD_WRITING_ENABLED
+//   extern WAVFileWriter *writer;
+// #endif
 
 class I2SMEMSSampler : public I2SSampler
 {
 private:
     i2s_pin_config_t m_i2sPins;
     bool m_fixSPH0645;
+    WAVFileWriter *writer;
 
 protected:
     void configureI2S();
@@ -17,5 +23,15 @@ public:
         i2s_pin_config_t &i2s_pins,
         i2s_config_t i2s_config,
         bool fixSPH0645 = false);
-    virtual int read(int16_t *samples, int count);
+    
+    /**
+     * @brief Register an external WAVFileWriter
+     * 
+     * @param writer WAVFileWriter object
+     * @return true success
+     * @return false failure
+     */
+    virtual bool register_wavfilewriter(WAVFileWriter *writer);
+    
+    virtual int read(int count);
 };
