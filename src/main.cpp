@@ -184,8 +184,8 @@ void setup()
   // ledcWrite(0, 0); // initially off
 
   // comment out the below line to cancel the wait for USB connection (needed for native USB)
-  while (!Serial)
-    ;
+  while (!Serial);
+
   Serial.println("Edge Impulse Inferencing Demo");
 
   Serial.print("Available PSRAM:");
@@ -501,7 +501,7 @@ static bool microphone_inference_start(uint32_t n_samples)
   }
 
   inference.buf_count = 0;
-  inference.n_samples = n_samples;
+  inference.n_samples = n_samples; // n_samples = 1600
   inference.buf_ready = 0;
 
   if (i2s_init(EI_CLASSIFIER_FREQUENCY))
