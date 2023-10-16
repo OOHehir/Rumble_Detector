@@ -20,8 +20,10 @@ WAVFileWriter::WAVFileWriter(FILE *fp, int sample_rate)
 }
 
 bool WAVFileWriter::buffer_is_full(){
-
+  
+  this->swap_buffers();
   buffer_ready_to_save = true;
+
   return true;
 }
 
@@ -33,14 +35,18 @@ void WAVFileWriter::swap_buffers(){
   
   buffer_idx[buffer_active] = 0;
 
+  ESP_LOGI(TAG, "buffer_active = %d", buffer_active);
+
 }
 
 void WAVFileWriter::write()
 {
-  fwrite(buffer[buffer_active], sizeof(int16_t), buffer_idx[buffer_active], m_fp);
-  m_file_size += sizeof(int16_t) * buffer_idx[buffer_active];
+  auto buffer_inactive = buffer_active ? 0 : 1;
 
-  this->swap_buffers();
+  fwrite(buffer[buffer_inactive], sizeof(int16_t), buffer_idx[buffer_inactive], m_fp);
+  m_file_size += sizeof(int16_t) * buffer_idx[buffer_inactive];
+
+  // Don't swap buffers here, wait for buffer_is_full() to do it
 
   buffer_ready_to_save = false;
 
@@ -48,12 +54,16 @@ void WAVFileWriter::write()
 
 bool WAVFileWriter::finish()
 {
+  // Have to consider the case where file has reached its  
+  // max size & other buffer is being filled
   ESP_LOGI(TAG, "Finishing wav file size: %d", m_file_size);
   // now fill in the header with the correct information and write it again
   m_header.data_bytes = m_file_size - sizeof(wav_header_t);
   m_header.wav_size = m_file_size - 8;
   fseek(m_fp, 0, SEEK_SET);
   fwrite(&m_header, sizeof(wav_header_t), 1, m_fp);
+
+  m_file_size = 0;
 
   this->swap_buffers();
 

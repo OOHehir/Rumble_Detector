@@ -274,13 +274,16 @@ void app_main(void)
   ESP_LOGI(TAG, "initArduino done");
   setup();
 
+  #ifdef SDCARD_WRITING_ENABLED
+    static int file_idx = 0;
+    static char file_name[100]; // needs to persist outside this scope??
+    static FILE *fp = NULL;
+  #endif
+
   while (1)
   {
 
 #ifdef SDCARD_WRITING_ENABLED
-    static int file_idx = 0;
-    static char file_name[100]; // needs to persist outside this scope??
-    static FILE *fp = NULL;
 
     if (fp == NULL)
     {
@@ -308,14 +311,16 @@ void app_main(void)
       else
       {
 
-        if (input->register_wavFileWriter(writer) == false)
-        {
-          ESP_LOGE(TAG, "Failed to register WAVFileWriter");
-        }
-        else
-        {
-          ESP_LOGI(TAG, "Registered WAVFileWriter");
-        }
+        while(input->register_wavFileWriter(writer) == false);
+
+        // if (input->register_wavFileWriter(writer) == false)
+        // {
+        //   ESP_LOGE(TAG, "Failed to register WAVFileWriter");
+        // }
+        // else
+        // {
+        //   ESP_LOGI(TAG, "Registered WAVFileWriter");
+        // }
       }
     }
 
@@ -363,6 +368,7 @@ void app_main(void)
 #ifdef SDCARD_WRITING_ENABLED
     
     if(writer != nullptr && writer->ready_to_save() == true){
+      
       writer->write();
 
       // write buffer
@@ -371,6 +377,7 @@ void app_main(void)
 
       if (writer->get_file_size() >= EI_CLASSIFIER_RAW_SAMPLE_COUNT * RECORDING_TIME)
       {
+        // TODO: Figure out how to save active buffer portion
         // and finish the writing
         ESP_LOGI(TAG, "Finishing SD writing\n");
         writer->finish();
