@@ -93,6 +93,7 @@ I2SMEMSSampler *input = nullptr;
 #define SDCARD_BUFFER 50 * 1024
 SDCard *sd_card = nullptr;
 WAVFileWriter *writer = nullptr;
+#define RECORDING_TIME 30
 #endif
 
 // sdcard (unused, as SDIO is fixed to its Pins)
@@ -131,6 +132,8 @@ PubSubClient client(espClient);
 bool ledState = false;
 unsigned long ledTurnedOnAt = 0;
 unsigned long ledDuration = 1;
+
+static const char *TAG = "main";
 
 /**
  * @brief      Arduino setup function
@@ -174,7 +177,7 @@ void connectToMQTT()
 void setup()
 {
   // put your setup code here, to run once:
-  Serial.begin(115200);
+  // Serial.begin(115200);
   // pinMode(LED_PIN, OUTPUT);
 
   // Initialize buzzer on GPIO 13
@@ -184,41 +187,35 @@ void setup()
   // ledcWrite(0, 0); // initially off
 
   // comment out the below line to cancel the wait for USB connection (needed for native USB)
-  while (!Serial)
-    ;
-  Serial.println("Edge Impulse Inferencing Demo");
-
-  Serial.print("Available PSRAM:");
+  // while (!Serial);
+  // Serial.println("Edge Impulse Inferencing Demo");
 
   // Returns 4192123
-  Serial.println(ESP.getPsramSize());
+  ESP_LOGI(TAG, "Available PSRAM: %d", ESP.getFreePsram());
 
   // summary of inferencing settings (from model_metadata.h)
-  ei_printf("Inferencing settings:\n");
-  ei_printf("\tInterval: ");
+  ESP_LOGI(TAG, "Inferencing settings:\n");
+  ESP_LOGI(TAG, "\tInterval: ");
   ei_printf_float((float)EI_CLASSIFIER_INTERVAL_MS);
-  ei_printf(" ms.\n");
-  ei_printf("\tFrame size: %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
-  ei_printf("\tSample length: %d ms.\n", EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16);
-  ei_printf("\tNo. of classes: %d\n", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
-
-  ei_printf("\nStarting continuous inference in 2 seconds...\n");
-  ei_sleep(2000);
+  ESP_LOGI(TAG, " ms.\n");
+  ESP_LOGI(TAG, "\tFrame size: %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
+  ESP_LOGI(TAG, "\tSample length: %d ms.\n", EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16);
+  ESP_LOGI(TAG, "\tNo. of classes: %d\n", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
 
 #ifdef SDCARD_WRITING_ENABLED
-  ei_printf("Mounting SDCard on /sdcard\n");
+  ESP_LOGI(TAG, "Mounting SDCard on /sdcard\n");
   sd_card = new SDCard("/sdcard", PIN_NUM_MISO, PIN_NUM_MOSI, PIN_NUM_CLK, PIN_NUM_CS);
   ei_sleep(200);
-  ei_printf("Mounted SDCard on /sdcard\n");
+  ESP_LOGI(TAG, "Mounted SDCard on /sdcard");
 #endif
 
   if (microphone_inference_start(EI_CLASSIFIER_RAW_SAMPLE_COUNT) == false)
   {
-    ei_printf("ERR: Could not allocate audio buffer (size %d), this could be due to the window length of your model\r\n", EI_CLASSIFIER_RAW_SAMPLE_COUNT);
+    ESP_LOGE(TAG, "ERR: Could not allocate audio buffer (size %d), this could be due to the window length of your model\r\n", EI_CLASSIFIER_RAW_SAMPLE_COUNT);
     return;
   }
 
-  ei_printf("Recording...\n");
+  ESP_LOGI(TAG, "Recording...");
 
   // Connect to Wi-Fi
   // connectToWiFi();
@@ -270,98 +267,132 @@ void updateLedState()
   }
 }
 
-// void app_main(void) {
-void loop()
+void app_main(void)
 {
-  // setup();
 
-  // initArduino();
-  bool m = microphone_inference_record();
-  if (!m)
+  initArduino();
+  ESP_LOGI(TAG, "initArduino done");
+  setup();
+
+  while (1)
   {
-    ei_printf("ERR: Failed to record audio...\n");
-    return;
-  }
-
-  signal_t signal;
-  signal.total_length = EI_CLASSIFIER_RAW_SAMPLE_COUNT;
-  signal.get_data = &microphone_audio_signal_get_data;
-  ei_impulse_result_t result = {0};
-
-  EI_IMPULSE_ERROR r = run_classifier(&signal, &result, debug_nn);
-  if (r != EI_IMPULSE_OK)
-  {
-    ei_printf("ERR: Failed to run classifier (%d)\n", r);
-    return;
-  }
-
-  // print the predictions
-  ei_printf("Predictions ");
-  ei_printf("(DSP: %d ms., Classification: %d ms., Anomaly: %d ms.)",
-            result.timing.dsp, result.timing.classification, result.timing.anomaly);
-  ei_printf(": \n");
-  for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
-  {
-    ei_printf("    %s: ", result.classification[ix].label);
-    ei_printf_float(result.classification[ix].value);
-    ei_printf("\n");
-  }
-  // Check if the first classification value is higher than 0.5
-  if (result.classification[1].value > 0.6)
-  {
-    ledState = true; // Set ledState to true to initiate the blinking sequence
-  }
-
-  // Update the LED state
-  updateLedState();
 
 #ifdef SDCARD_WRITING_ENABLED
-  static int file_idx = 0;
-  static int file_size = 0;
-  static FILE *fp = NULL;
+    static int file_idx = 0;
+    static uint32_t file_size = 0;
+    static char file_name[100]; // needs to persist outside this scope??
+    static FILE *fp = NULL;
 
-  // TODO: if (result.classification[1].value > 0.7 && writer == NULL)
-  // Force recording
-  if (writer == NULL)
-  {
-    char file_name[100];
-    // const char* fname = "/sdcard/test.wav";
-    sprintf(file_name, "/sdcard/test%d.wav", file_idx);
-    ei_printf("writing audio at %s\n", file_name);
-    // open the file on the sdcard
-    fp = fopen(file_name, "wb");
-    // create a new wave file writer
-    writer = new WAVFileWriter(fp, EI_CLASSIFIER_FREQUENCY);
-  }
-
-  if (writer != NULL)
-  {
-    // write buffer
-    // writer->write(recordBuffer, record_buffer_idx);
-    // file_size += record_buffer_idx;
-
-    if (file_size >= EI_CLASSIFIER_RAW_SAMPLE_COUNT * 10)
+    if (fp == NULL)
     {
-      // and finish the writing
-      writer->finish();
-      fclose(fp);
-      delete writer;
-      file_idx++;
-      fp = NULL;
-      writer = NULL;
-      file_size = 0;
-    }
-  }
+      sprintf(file_name, "/sdcard/eloc/test%d.wav", file_idx++);
+      ESP_LOGI(TAG, "writing audio at %s", file_name);
 
-  // reset recording buffer
-  // record_buffer_idx = 0;
+      // open the file on the sdcard
+      fp = fopen(file_name, "wb");
+
+      if (fp == NULL)
+      {
+        ESP_LOGE(TAG, "Failed to open file for writing");
+        return;
+      }
+      else
+      {
+        // create a new wave file writer
+        writer = new WAVFileWriter(fp, EI_CLASSIFIER_FREQUENCY);
+      }
+
+      if (writer == nullptr)
+      {
+        ESP_LOGE(TAG, "Failed to create WAVFileWriter");
+      }
+      else
+      {
+
+        if (input->register_wavfilewriter(writer) == false)
+        {
+          ESP_LOGE(TAG, "Failed to register WAVFileWriter");
+        }
+        else
+        {
+          ESP_LOGI(TAG, "Registered WAVFileWriter");
+        }
+      }
+    }
+
+#endif // SDCARD_WRITING_ENABLED
+
+    bool m = microphone_inference_record();
+    if (!m)
+    {
+      ESP_LOGE(TAG, "ERR: Failed to record audio...");
+      return;
+    }
+
+    signal_t signal;
+    signal.total_length = EI_CLASSIFIER_RAW_SAMPLE_COUNT;
+    signal.get_data = &microphone_audio_signal_get_data;
+    ei_impulse_result_t result = {0};
+
+    EI_IMPULSE_ERROR r = run_classifier(&signal, &result, debug_nn);
+    if (r != EI_IMPULSE_OK)
+    {
+      ESP_LOGE(TAG, "ERR: Failed to run classifier (%d)", r);
+      return;
+    }
+
+    // print the predictions
+    ESP_LOGI(TAG, "Predictions ");
+    ESP_LOGI(TAG, "(DSP: %d ms., Classification: %d ms., Anomaly: %d ms.)",
+             result.timing.dsp, result.timing.classification, result.timing.anomaly);
+    ESP_LOGI(TAG, ": \n");
+    for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
+    {
+      ESP_LOGI(TAG, "    %s: ", result.classification[ix].label);
+      ei_printf_float(result.classification[ix].value);
+      ESP_LOGI(TAG, "\n");
+    }
+    // Check if the first classification value is higher than 0.5
+    if (result.classification[1].value > 0.6)
+    {
+      ledState = true; // Set ledState to true to initiate the blinking sequence
+    }
+
+    // Update the LED state
+    updateLedState();
+
+#ifdef SDCARD_WRITING_ENABLED
+    
+    if(writer != nullptr && writer->ready_to_save() == true){
+      writer->write();
+
+      // write buffer
+      // writer->write(recordBuffer, record_buffer_idx);
+      // file_size += record_buffer_idx;
+
+      if (writer->get_file_size() >= EI_CLASSIFIER_RAW_SAMPLE_COUNT * RECORDING_TIME)
+      {
+        // and finish the writing
+        ESP_LOGI(TAG, "Finishing SD writing\n");
+        writer->finish();
+        fclose(fp);
+        delete writer;
+        file_idx++;
+        fp = NULL;
+        writer = nullptr;
+        file_size = 0;
+      }
+    }
+
+    // reset recording buffer
+    // record_buffer_idx = 0;
 #endif
 
 #if EI_CLASSIFIER_HAS_ANOMALY == 1
-  ei_printf("    anomaly score: ");
-  ei_printf_float(result.anomaly);
-  ei_printf("\n");
+    ESP_LOGI(TAG, "    anomaly score: ");
+    ESP_LOGI(TAG, result.anomaly);
 #endif
+  }
 }
 
 /**
@@ -407,7 +438,7 @@ static void audio_inference_callback(uint32_t n_bytes)
 static void capture_samples(void *arg)
 {
 
-  ei_printf("capture_samples()\n");
+  ESP_LOGI(TAG, "capture_samples()");
   const int32_t i2s_bytes_to_read = (uint32_t)arg;
 
   // logical right shift divides a number by 2, throwing out any remainders
@@ -455,13 +486,13 @@ static void capture_samples(void *arg)
 
     if (bytes_read <= 0)
     {
-      ei_printf("Error in I2S read : %d", bytes_read);
+      ESP_LOGI(TAG, "Error in I2S read : %d", bytes_read);
     }
     else
     {
       if (bytes_read < i2s_bytes_to_read)
       {
-        ei_printf("Partial I2S read");
+        ESP_LOGI(TAG, "Partial I2S read");
       }
 
       // scale the data (otherwise the sound is too quiet)
@@ -497,6 +528,7 @@ static bool microphone_inference_start(uint32_t n_samples)
 
   if (inference.buffer == NULL)
   {
+    ESP_LOGE(TAG, "Failed to allocate %d bytes for inference buffer", n_samples * sizeof(int16_t));
     return false;
   }
 
@@ -506,7 +538,7 @@ static bool microphone_inference_start(uint32_t n_samples)
 
   if (i2s_init(EI_CLASSIFIER_FREQUENCY))
   {
-    ei_printf("Failed to start I2S!");
+    ESP_LOGI(TAG, "Failed to start I2S!");
   }
 
   ei_sleep(100);
@@ -527,12 +559,13 @@ static bool microphone_inference_start(uint32_t n_samples)
  */
 static bool microphone_inference_record(void)
 {
-  ei_printf("microphone_inference_record()\n");
+  ESP_LOGI(TAG, "microphone_inference_record()");
 
   bool ret = true;
 
   while (inference.buf_ready == 0)
   {
+
     delay(10);
   }
 
