@@ -1,8 +1,7 @@
 #include "esp_log.h"
 #include "WAVFileWriter.h"
 
-
-static const char *TAG = "WAV";
+static const char *TAG = "WAVFileWriter";
 
 WAVFileWriter::WAVFileWriter(FILE *fp, int sample_rate)
 {
@@ -20,7 +19,14 @@ WAVFileWriter::WAVFileWriter(FILE *fp, int sample_rate)
   buffer[1][0] = {0};
 }
 
+bool WAVFileWriter::buffer_is_full(){
+
+  buffer_ready_to_save = true;
+  return true;
+}
+
 void WAVFileWriter::swap_buffers(){
+  // TODO: Need thread mutex??
   // swap buffers
   if (++buffer_active > 1)
     buffer_active = 0;

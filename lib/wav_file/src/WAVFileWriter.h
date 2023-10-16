@@ -23,8 +23,9 @@ public:
    */
   size_t buffer_active = 0;
   bool buffer_ready_to_save = false;
+  const static size_t buffer_size = 16000;
   size_t buffer_idx[2];
-  signed short buffer[2][16000];
+  signed short buffer[2][buffer_size];
 
   /**
    * @brief Construct a new WAVFileWriter object
@@ -32,6 +33,32 @@ public:
    * @param sample_rate
    */
   WAVFileWriter(FILE *fp, int sample_rate);
+
+  /**
+   * @brief Get the current file size
+   * @return u_int32_t file size in bytes
+   */
+  u_int32_t get_file_size() { return m_file_size; }
+
+  /**
+   * @brief Set current file size to 0
+   */
+  void zero_file_size() { m_file_size = 0; }
+
+  /**
+   * @brief Get wether file ready to save
+   * @return true if ready to save
+   */
+  bool ready_to_save() {return buffer_ready_to_save;}
+
+  /**
+   * @brief Called when a buffer is full
+   * @note This will swap the buffers and set buffer_ready_to_save = true
+   * 
+   * @return true success
+   * @return false 
+   */
+  bool buffer_is_full();
 
   /**
    * @brief Swap buffers

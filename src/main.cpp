@@ -279,7 +279,6 @@ void app_main(void)
 
 #ifdef SDCARD_WRITING_ENABLED
     static int file_idx = 0;
-    static uint32_t file_size = 0;
     static char file_name[100]; // needs to persist outside this scope??
     static FILE *fp = NULL;
 
@@ -309,7 +308,7 @@ void app_main(void)
       else
       {
 
-        if (input->register_wavfilewriter(writer) == false)
+        if (input->register_wavFileWriter(writer) == false)
         {
           ESP_LOGE(TAG, "Failed to register WAVFileWriter");
         }
@@ -380,7 +379,6 @@ void app_main(void)
         file_idx++;
         fp = NULL;
         writer = nullptr;
-        file_size = 0;
       }
     }
 
@@ -636,7 +634,7 @@ static int i2s_init(uint32_t sampling_rate)
 
   input = new I2SMEMSSampler(I2S_NUM_0, i2s_mic_pins, i2s_mic_Config);
 
-  input->register_wavfilewriter(writer);
+  input->register_wavFileWriter(writer);
 
   return ESP_OK;
 }

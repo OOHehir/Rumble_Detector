@@ -28,11 +28,11 @@ void I2SMEMSSampler::configureI2S()
     i2s_set_pin(m_i2sPort, &m_i2sPins);
 }
 
-bool I2SMEMSSampler::register_wavfilewriter(WAVFileWriter *ext_writer){
+bool I2SMEMSSampler::register_wavFileWriter(WAVFileWriter *ext_writer){
     writer = ext_writer;
 
     if (writer == nullptr){
-        ESP_LOGE(TAG, "register_wavfilewriter() - WAVFileWriter not registered");
+        ESP_LOGE(TAG, "register_wavFileWriter() - WAVFileWriter not registered");
         return false;
     }else{
         return true;

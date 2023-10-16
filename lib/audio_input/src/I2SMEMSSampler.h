@@ -3,10 +3,6 @@
 #include "I2SSampler.h"
 #include "WAVFileWriter.h"
 
-// #ifdef SDCARD_WRITING_ENABLED
-//   extern WAVFileWriter *writer;
-// #endif
-
 class I2SMEMSSampler : public I2SSampler
 {
 private:
@@ -31,7 +27,7 @@ public:
      * @return true success
      * @return false failure
      */
-    virtual bool register_wavfilewriter(WAVFileWriter *writer);
+    virtual bool register_wavFileWriter(WAVFileWriter *writer);
     
     virtual int read(int count);
 };
