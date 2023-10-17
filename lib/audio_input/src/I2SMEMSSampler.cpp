@@ -37,7 +37,15 @@ bool I2SMEMSSampler::register_wavFileWriter(WAVFileWriter *ext_writer){
     }else{
         return true;
     }
-        
+}
+
+bool I2SMEMSSampler::register_ei_inference(inference_t ext_inference, int ext_ei_sampling_freq){
+
+    inference = ext_inference;
+    ei_sampling_freq = ext_ei_sampling_freq;
+
+    return true;
+
 }
 
 int I2SMEMSSampler::read(int count)
