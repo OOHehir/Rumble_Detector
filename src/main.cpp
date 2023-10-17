@@ -47,7 +47,7 @@
 #include "driver/i2s.h"
 #include "WAVFileWriter.h"
 #include "SDCard.h"
-#include "stdlib.h"
+#include <stdlib.h>
 #include <cstdio>
 #include "I2SMEMSSampler.h"
 #include "I2SSampler.h"
@@ -55,6 +55,7 @@
 
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include "ei_inference.h"
 
 static void capture_samples(void *arg);
 static int i2s_deinit(void);
@@ -63,14 +64,6 @@ static int microphone_audio_signal_get_data(size_t offset, size_t length, float 
 static bool microphone_inference_record(void);
 static int i2s_init(uint32_t sampling_rate);
 
-/** Audio buffers, pointers and selectors */
-typedef struct
-{
-  int16_t *buffer;
-  uint8_t buf_ready;
-  uint32_t buf_count;
-  uint32_t n_samples;
-} inference_t;
 
 static inference_t inference;
 static const uint32_t sample_buffer_size = 2048;
@@ -126,7 +119,7 @@ const char *mqtt_server = "192.168.8.115";
 const uint16_t mqtt_port = 1883;
 
 WiFiClient espClient;
-PubSubClient client(espClient);
+// PubSubClient client(espClient);
 
 // Variables to store the LED state and the time it was last turned on
 bool ledState = false;
@@ -156,23 +149,23 @@ void connectToWiFi()
   ei_printf("\nConnected to Wi-Fi\n");
 }
 
-void connectToMQTT()
-{
-  client.setServer(mqtt_server, 1883);
-  while (!client.connected())
-  {
-    ei_printf("Attempting MQTT connection...");
-    if (client.connect("ESP32Client"))
-    {
-      ei_printf("connected\n");
-    }
-    else
-    {
-      ei_printf("failed, rc=%d\n", client.state());
-      delay(5000);
-    }
-  }
-}
+// void connectToMQTT()
+// {
+//   client.setServer(mqtt_server, 1883);
+//   while (!client.connected())
+//   {
+//     ei_printf("Attempting MQTT connection...");
+//     if (client.connect("ESP32Client"))
+//     {
+//       ei_printf("connected\n");
+//     }
+//     else
+//     {
+//       ei_printf("failed, rc=%d\n", client.state());
+//       delay(5000);
+//     }
+//   }
+// }
 
 void setup()
 {
@@ -228,14 +221,14 @@ void setup()
  * @brief      Arduino main function. Runs the inferencing loop.
  */
 
-void sendMQTTMessage(const char *topic, const char *message)
-{
-  if (!client.connected())
-  {
-    connectToMQTT();
-  }
-  client.publish(topic, message);
-}
+// void sendMQTTMessage(const char *topic, const char *message)
+// {
+//   if (!client.connected())
+//   {
+//     connectToMQTT();
+//   }
+//   client.publish(topic, message);
+// }
 
 // Buzzer beeps
 void beep(int n_times)
@@ -288,7 +281,7 @@ void app_main(void)
     if (fp == NULL)
     {
       sprintf(file_name, "/sdcard/eloc/test%d.wav", file_idx++);
-      ESP_LOGI(TAG, "writing audio at %s", file_name);
+      ESP_LOGI(TAG, "Saving audio to %s", file_name);
 
       // open the file on the sdcard
       fp = fopen(file_name, "wb");
@@ -310,17 +303,9 @@ void app_main(void)
       }
       else
       {
-
+        // Block until properly registered
+        // Otherwise will get error later
         while(input->register_wavFileWriter(writer) == false);
-
-        // if (input->register_wavFileWriter(writer) == false)
-        // {
-        //   ESP_LOGE(TAG, "Failed to register WAVFileWriter");
-        // }
-        // else
-        // {
-        //   ESP_LOGI(TAG, "Registered WAVFileWriter");
-        // }
       }
     }
 
@@ -416,14 +401,6 @@ static void audio_inference_callback(uint32_t n_bytes)
   {
     inference.buffer[inference.buf_count++] = sampleBuffer[i];
 
-#ifdef SDCARD_WRITING_ENABLED
-    // if (record_buffer_idx < EI_CLASSIFIER_RAW_SAMPLE_COUNT * 10) {
-    //     recordBuffer[record_buffer_idx++] = sampleBuffer[i];
-    // } else {
-    //     ei_printf("Warning: Record buffer is full, skipping sample\n");
-    // }
-#endif
-
     if (inference.buf_count >= inference.n_samples)
     {
       inference.buf_count = 0;
@@ -449,6 +426,8 @@ static void capture_samples(void *arg)
   // logical right shift divides a number by 2, throwing out any remainders
   // Need to divide by 2 because going from uint32_t to int16_t
   size_t i2s_samples_to_read = i2s_bytes_to_read >> 1;
+
+  input->register_ei_inference(inference, EI_CLASSIFIER_FREQUENCY);
 
   input->start();
 
