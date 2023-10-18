@@ -13,6 +13,8 @@ I2SMEMSSampler::I2SMEMSSampler(
     m_i2sPins = i2s_pins;
     m_fixSPH0645 = fixSPH0645;
 
+    i2s_sampling_rate = i2s_config.sample_rate;
+
     writer = nullptr;
 }
 
@@ -43,6 +45,7 @@ bool I2SMEMSSampler::register_ei_inference(inference_t ext_inference, int ext_ei
 
     inference = ext_inference;
     ei_sampling_freq = ext_ei_sampling_freq;
+    ei_skip_rate = i2s_sampling_rate / ei_sampling_freq;
 
     return true;
 
@@ -67,6 +70,18 @@ int I2SMEMSSampler::read(int count)
     }
 
     size_t bytes_read = 0;
+
+    /*
+        How often do we need to skip a sample to place into the EI buffer?
+        This handles scenario where  EI_CLASSIFIER_FREQUENCY != I2S sample rate
+        Will skip packing EI buffer at this rate. e.g:
+        if EI_CLASSIFIER_FREQUENCY = 4000Hz & I2S sample rate = 16000Hz > ei_skip_rate = 4
+        if EI_CLASSIFIER_FREQUENCY = 8000Hz & I2S sample rate = 16000Hz > ei_skip_rate = 2
+        if EI_CLASSIFIER_FREQUENCY = 16000Hz & I2S sample rate = 16000Hz > ei_skip_rate = 1
+
+        // TODO: Test what happens when not an even multiple!
+    */
+    auto skip_current = 1;
     
     i2s_read(m_i2sPort, raw_samples, sizeof(int32_t) * count, &bytes_read, portMAX_DELAY);
     
@@ -99,11 +114,21 @@ int I2SMEMSSampler::read(int count)
             writer->write();
         }
         
-        
-        
-        // Store into edge-impulse buffer
-        // sampleBuffer[i] = raw_samples[i] >> 11;
+        // Store into edge-impulse buffer taking into requirement to skip if necessary
+        if (skip_current >= ei_skip_rate){
+            inference.buffer[inference.buf_count++] = raw_samples[i] >> 11;
+            skip_current = 1;
 
+            if (inference.buf_count >= inference.n_samples)
+            {
+            inference.buf_count = 0;
+            inference.buf_ready = 1;
+            }
+        }
+        else{
+            skip_current ++;
+        }
+        
     }
 
     free(raw_samples);
