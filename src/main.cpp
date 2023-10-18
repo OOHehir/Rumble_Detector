@@ -420,16 +420,25 @@ static void audio_inference_callback(uint32_t n_bytes)
 static void capture_samples(void *arg)
 {
 
-  ESP_LOGI(TAG, "capture_samples()");
+  ESP_LOGI(TAG, "%s", __func__);
+  ESP_LOGI(TAG, "%s", __PRETTY_FUNCTION__);
+
   const int32_t i2s_bytes_to_read = (uint32_t)arg;
 
   // logical right shift divides a number by 2, throwing out any remainders
   // Need to divide by 2 because going from uint32_t to int16_t
   size_t i2s_samples_to_read = i2s_bytes_to_read >> 1;
 
-  input->register_ei_inference(inference, EI_CLASSIFIER_FREQUENCY);
+  if (input == nullptr){
+    ESP_LOGE(TAG, "")
+  }
+  else{
+    input->register_ei_inference(inference, EI_CLASSIFIER_FREQUENCY);
+    input->start();
+  }
+    
 
-  input->start();
+  
 
   // Enter a continual loop to collect new data from I2S
   while (record_status)
@@ -620,7 +629,7 @@ static int i2s_init(uint32_t sampling_rate)
 
   input = new I2SMEMSSampler(I2S_NUM_0, i2s_mic_pins, i2s_mic_Config);
 
-  input->register_wavFileWriter(writer);
+  // TODO: This an error??? input->register_wavFileWriter(writer);
 
   return ESP_OK;
 }
