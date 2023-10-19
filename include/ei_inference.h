@@ -11,13 +11,17 @@
 
 #include <stdint.h>
 
-/** Audio buffers, pointers and selectors */
-typedef struct
-{
-  int16_t *buffer;
-  uint8_t buf_ready;
-  uint32_t buf_count;
-  uint32_t n_samples;
+
+
+/** Audio buffers, pointers and selectors 
+ *  Allocate two buffers for continuous inference
+*/
+typedef struct {
+    signed short *buffers[2];
+    unsigned char buf_select;
+    unsigned char buf_ready;
+    unsigned int buf_count;
+    unsigned int n_samples;
 } inference_t;
 
 
