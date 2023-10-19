@@ -8,7 +8,7 @@ class WAVFileWriter
 private:
   u_int32_t m_file_size; // Size of the file in bytes
 
-  FILE *m_fp;
+  FILE *m_fp = NULL;
   wav_header_t m_header;
 
 public:

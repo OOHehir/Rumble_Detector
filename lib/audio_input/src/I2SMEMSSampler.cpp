@@ -31,6 +31,7 @@ void I2SMEMSSampler::configureI2S()
 }
 
 bool I2SMEMSSampler::register_wavFileWriter(WAVFileWriter *ext_writer){
+    
     writer = ext_writer;
 
     if (writer == nullptr){
@@ -55,10 +56,11 @@ int I2SMEMSSampler::read(int count)
 {
     //ESP_LOGI(TAG, "I2SMEMSSampler::read()");
 
-    if(writer == nullptr){
-        ESP_LOGE(TAG, "read() - WAVFileWriter not registered");
-        return 0;
-    }
+    // TODO: Check if writer is registered
+    // if(writer == nullptr){
+    //     ESP_LOGE(TAG, "read() - WAVFileWriter not registered");
+    //     return 0;
+    // }
 
     // read from i2s
     int32_t *raw_samples = (int32_t *)malloc(sizeof(int32_t) * count);
@@ -90,7 +92,7 @@ int I2SMEMSSampler::read(int count)
     
     int samples_read = bytes_read / sizeof(int32_t);
 
-    //ESP_LOGI(TAG, "samples_read = %d", samples_read);  
+    // ESP_LOGI(TAG, "samples_read = %d", samples_read);  
     
     for (int i = 0; i < samples_read; i++)
     {   
@@ -116,11 +118,12 @@ int I2SMEMSSampler::read(int count)
         
         // Store into edge-impulse buffer taking into requirement to skip if necessary
         if (skip_current >= ei_skip_rate){
-            inference.buffer[inference.buf_count++] = raw_samples[i] >> 11;
+            inference.buffers[inference.buf_select][inference.buf_count++] = raw_samples[i] >> 11;
             skip_current = 1;
 
             if (inference.buf_count >= inference.n_samples)
             {
+            inference.buf_select ^= 1;
             inference.buf_count = 0;
             inference.buf_ready = 1;
             }

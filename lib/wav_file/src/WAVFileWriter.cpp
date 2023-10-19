@@ -42,6 +42,13 @@ void WAVFileWriter::swap_buffers(){
 void WAVFileWriter::write()
 {
   auto buffer_inactive = buffer_active ? 0 : 1;
+  
+  ESP_LOGI(TAG, "Writing wav file size: %d", m_file_size);
+  
+  if (m_fp == NULL){
+    ESP_LOGE(TAG, "File pointer is NULL");
+    return;
+  }
 
   fwrite(buffer[buffer_inactive], sizeof(int16_t), buffer_idx[buffer_inactive], m_fp);
   m_file_size += sizeof(int16_t) * buffer_idx[buffer_inactive];
@@ -64,7 +71,8 @@ bool WAVFileWriter::finish()
   fwrite(&m_header, sizeof(wav_header_t), 1, m_fp);
 
   m_file_size = 0;
-
+  m_fp = NULL;
+    
   this->swap_buffers();
 
   return true;
