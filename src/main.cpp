@@ -64,7 +64,6 @@ static int microphone_audio_signal_get_data(size_t offset, size_t length, float 
 static bool microphone_inference_record(void);
 static int i2s_init(uint32_t sampling_rate);
 
-
 static inference_t inference;
 static const uint32_t sample_buffer_size = 2048;
 static signed short sampleBuffer[sample_buffer_size];
@@ -190,16 +189,17 @@ void setup()
   ESP_LOGI(TAG, "Inferencing settings:\n");
   ESP_LOGI(TAG, "\tInterval: ");
   ei_printf_float((float)EI_CLASSIFIER_INTERVAL_MS);
-  ESP_LOGI(TAG, " ms.\n");
-  ESP_LOGI(TAG, "\tFrame size: %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
-  ESP_LOGI(TAG, "\tSample length: %d ms.\n", EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16);
-  ESP_LOGI(TAG, "\tNo. of classes: %d\n", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
+  ESP_LOGI(TAG, " ms.");
+  ESP_LOGI(TAG, "\tFrame size: %d", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
+  ESP_LOGI(TAG, "\tSample length: %d ms.", EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16);
+  ESP_LOGI(TAG, "\tNo. of classes: %d", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
 
 #ifdef SDCARD_WRITING_ENABLED
   ESP_LOGI(TAG, "Mounting SDCard on /sdcard\n");
   sd_card = new SDCard("/sdcard", PIN_NUM_MISO, PIN_NUM_MOSI, PIN_NUM_CLK, PIN_NUM_CS);
   ei_sleep(200);
-  ESP_LOGI(TAG, "Mounted SDCard on /sdcard");
+  if (sd_card !=)
+    ESP_LOGI(TAG, "Mounted SDCard on /sdcard");
 #endif
 
   if (microphone_inference_start(EI_CLASSIFIER_RAW_SAMPLE_COUNT) == false)
@@ -221,14 +221,14 @@ void setup()
  * @brief      Arduino main function. Runs the inferencing loop.
  */
 
-// void sendMQTTMessage(const char *topic, const char *message)
-// {
-//   if (!client.connected())
-//   {
-//     connectToMQTT();
-//   }
-//   client.publish(topic, message);
-// }
+void sendMQTTMessage(const char *topic, const char *message)
+{
+  if (!client.connected())
+  {
+    connectToMQTT();
+  }
+  client.publish(topic, message);
+}
 
 // Buzzer beeps
 void beep(int n_times)
@@ -267,11 +267,11 @@ void app_main(void)
   ESP_LOGI(TAG, "initArduino done");
   setup();
 
-  #ifdef SDCARD_WRITING_ENABLED
-    static int file_idx = 0;
-    static char file_name[100]; // needs to persist outside this scope??
-    static FILE *fp = NULL;
-  #endif
+#ifdef SDCARD_WRITING_ENABLED
+  static int file_idx = 0;
+  static char file_name[100]; // needs to persist outside this scope??
+  static FILE *fp = NULL;
+#endif
 
   while (1)
   {
@@ -305,7 +305,8 @@ void app_main(void)
       {
         // Block until properly registered
         // Otherwise will get error later
-        while(input->register_wavFileWriter(writer) == false);
+        while (input->register_wavFileWriter(writer) == false)
+          ;
       }
     }
 
@@ -351,9 +352,10 @@ void app_main(void)
     updateLedState();
 
 #ifdef SDCARD_WRITING_ENABLED
-    
-    if(writer != nullptr && writer->ready_to_save() == true){
-      
+
+    if (writer != nullptr && writer->ready_to_save() == true)
+    {
+
       writer->write();
 
       // write buffer
@@ -394,15 +396,13 @@ void app_main(void)
  */
 static void audio_inference_callback(uint32_t n_bytes)
 {
-
-  // ei_printf("audio_inference_callback()\n");
-
   for (int i = 0; i < n_bytes >> 1; i++)
   {
-    inference.buffer[inference.buf_count++] = sampleBuffer[i];
+    inference.buffers[inference.buf_select][inference.buf_count++] = sampleBuffer[i];
 
     if (inference.buf_count >= inference.n_samples)
     {
+      inference.buf_select ^= 1;
       inference.buf_count = 0;
       inference.buf_ready = 1;
     }
@@ -426,39 +426,40 @@ static void capture_samples(void *arg)
   const int32_t i2s_bytes_to_read = (uint32_t)arg;
 
   // logical right shift divides a number by 2, throwing out any remainders
-  // Need to divide by 2 because going from uint32_t to int16_t
+  // Need to divide by 2 because reading bytes into a int16_t buffer
   size_t i2s_samples_to_read = i2s_bytes_to_read >> 1;
 
-  if (input == nullptr){
-    ESP_LOGE(TAG, "")
+  if (input == nullptr)
+  {
+    ESP_LOGE(TAG, "%s - MEMSampler == nullptr", __func__);
   }
-  else{
+  else
+  {
     input->register_ei_inference(inference, EI_CLASSIFIER_FREQUENCY);
     input->start();
   }
-    
-
-  
 
   // Enter a continual loop to collect new data from I2S
   while (record_status)
   {
     int samples_read = input->read(i2s_samples_to_read);
 
-    // Scale the data
-    for (int x = 0; x < i2s_samples_to_read; x++)
-    {
-      sampleBuffer[x] = ((int16_t)sampleBuffer[x]) * I2S_DATA_SCALING_FACTOR;
-    }
+    // Buffers loaded in I2MEMSampler
 
-    if (record_status)
-    {
-      audio_inference_callback(i2s_bytes_to_read);
-    }
-    else
-    {
-      break;
-    }
+    // Scale the data
+    // for (int x = 0; x < i2s_samples_to_read; x++)
+    // {
+    //   sampleBuffer[x] = ((int16_t)sampleBuffer[x]) * I2S_DATA_SCALING_FACTOR;
+    // }
+
+    // if (record_status)
+    // {
+    //   audio_inference_callback(i2s_bytes_to_read);
+    // }
+    // else
+    // {
+    //   break;
+    // }
   }
 
   input->stop();
@@ -517,173 +518,190 @@ static void capture_samples(void *arg)
  */
 static bool microphone_inference_start(uint32_t n_samples)
 {
-  inference.buffer = (int16_t *)heap_caps_malloc(n_samples * sizeof(int16_t), MALLOC_CAP_SPIRAM);
+  inference.buffers[0] = (int16_t *)heap_caps_malloc(n_samples * sizeof(int16_t), MALLOC_CAP_SPIRAM);
 
-  if (inference.buffer == NULL)
+  if (inference.buffers[0] == NULL)
   {
-    ESP_LOGE(TAG, "Failed to allocate %d bytes for inference buffer", n_samples * sizeof(int16_t));
-    return false;
+    {
+      ESP_LOGE(TAG, "Failed to allocate %d bytes for inference buffer", n_samples * sizeof(int16_t));
+      return false;
+    }
+
+    inference.buffers[1] = (int16_t *)heap_caps_malloc(n_samples * sizeof(int16_t), MALLOC_CAP_SPIRAM);
+
+    if (inference.buffers[1] == NULL)
+    {
+      ei_free(inference.buffers[0]);
+      return false;
+    }
+
+    inference.buf_select = 0;
+    inference.buf_count = 0;
+    inference.n_samples = n_samples;
+    inference.buf_ready = 0;
+
+    if (i2s_init(EI_CLASSIFIER_FREQUENCY))
+    {
+      ESP_LOGI(TAG, "Failed to start I2S!");
+    }
+
+    ei_sleep(100);
+
+    record_status = true;
+
+    // xTaskCreate(capture_samples, "CaptureSamples", 1024 * 16, (void*)sample_buffer_size, 10, NULL);
+    xTaskCreate(capture_samples, "CaptureSamples", 1024 * 32, (void *)sample_buffer_size, 10, NULL);
+
+    return true;
   }
 
-  inference.buf_count = 0;
-  inference.n_samples = n_samples;
-  inference.buf_ready = 0;
-
-  if (i2s_init(EI_CLASSIFIER_FREQUENCY))
+  /**
+   * @brief  Wait on new data.
+   *         Blocking function.
+   *         Unblocked by audio_inference_callback() setting inference.buf_ready
+   *
+   * @return     True when finished
+   */
+  static bool microphone_inference_record(void)
   {
-    ESP_LOGI(TAG, "Failed to start I2S!");
+    ESP_LOGI(TAG, "microphone_inference_record()");
+    bool ret = true;
+
+    if (inference.buf_ready == 1)
+    {
+      ei_printf(
+          "Error sample buffer overrun. Decrease the number of slices per model window "
+          "(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW)\n");
+      ret = false;
+    }
+
+    while (inference.buf_ready == 0)
+    {
+      delay(1);
+    }
+
+    inference.buf_ready = 0;
+    return true;
   }
 
-  ei_sleep(100);
-
-  record_status = true;
-
-  xTaskCreate(capture_samples, "CaptureSamples", 1024 * 16, (void *)sample_buffer_size, 10, NULL);
-
-  return true;
-}
-
-/**
- * @brief  Wait on new data.
- *         Blocking function.
- *         Unblocked by audio_inference_callback() setting inference.buf_ready
- *
- * @return     True when finished
- */
-static bool microphone_inference_record(void)
-{
-  ESP_LOGI(TAG, "microphone_inference_record()");
-
-  bool ret = true;
-
-  while (inference.buf_ready == 0)
-  {
-
-    delay(10);
-  }
-
-  inference.buf_ready = 0;
-  return ret;
-}
-
-/**
- * Get raw audio signal data
- */
+  /**
+   * Get raw audio signal data
+   */
 static int microphone_audio_signal_get_data(size_t offset, size_t length, float *out_ptr)
 {
-  numpy::int16_to_float(&inference.buffer[offset], out_ptr, length);
+    numpy::int16_to_float(&inference.buffers[inference.buf_select ^ 1][offset], out_ptr, length);
 
-  return 0;
+    return 0;
 }
 
-/**
- * @brief      Stop PDM and release buffers
- */
-static void microphone_inference_end(void)
-{
-  i2s_deinit();
-  heap_caps_free(inference.buffer);
-}
+  /**
+   * @brief      Stop PDM and release buffers
+   */
+  static void microphone_inference_end(void)
+  {
+    i2s_deinit();
+    heap_caps_free(inference.buffer);
+  }
 
 #ifdef USE_I2S_MIC_INPUT
-static int i2s_init(uint32_t sampling_rate)
-{
-  // i2s config for reading from I2S
-  i2s_config_t i2s_mic_Config = {
-      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-      .sample_rate = sampling_rate,
-      .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
-      .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-      .communication_format = I2S_COMM_FORMAT_I2S,
-      .intr_alloc_flags = ESP_INTR_FLAG_LEVEL2,
-      .dma_buf_count = 4,
-      .dma_buf_len = 1024,
-      .use_apll = true,
-      .tx_desc_auto_clear = false,
-      .fixed_mclk = 0};
+  static int i2s_init(uint32_t sampling_rate)
+  {
+    // i2s config for reading from I2S
+    i2s_config_t i2s_mic_Config = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
+        .sample_rate = sampling_rate,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
+        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+        .communication_format = I2S_COMM_FORMAT_I2S,
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL2,
+        .dma_buf_count = 4,
+        .dma_buf_len = 1024,
+        .use_apll = true,
+        .tx_desc_auto_clear = false,
+        .fixed_mclk = 0};
 
-  // i2s microphone pins
-  // i2s_pin_config_t i2s_mic_pins = {
-  //     .mck_io_num = I2S_PIN_NO_CHANGE,
-  //     .bck_io_num = 18,
-  //     .ws_io_num = 5,
-  //     .data_out_num = I2S_PIN_NO_CHANGE,
-  //     .data_in_num = 19
-  // };
+    // i2s microphone pins
+    // i2s_pin_config_t i2s_mic_pins = {
+    //     .mck_io_num = I2S_PIN_NO_CHANGE,
+    //     .bck_io_num = 18,
+    //     .ws_io_num = 5,
+    //     .data_out_num = I2S_PIN_NO_CHANGE,
+    //     .data_in_num = 19
+    // };
 
-  i2s_pin_config_t i2s_mic_pins = {
+    i2s_pin_config_t i2s_mic_pins = {
 
 #ifdef ELOC_BOARD
-      .bck_io_num = 18,   // IIS_SCLK
-      .ws_io_num = 5,     // IIS_LCLK   was 32
-      .data_out_num = -1, // IIS_DSIN
-      .data_in_num = 19,  // IIS_DOUT   was 33
+        .bck_io_num = 18,   // IIS_SCLK
+        .ws_io_num = 5,     // IIS_LCLK   was 32
+        .data_out_num = -1, // IIS_DSIN
+        .data_in_num = 19,  // IIS_DOUT   was 33
 #else
-      // WROVER
-      .bck_io_num = 26,   // IIS_SCLK
-      .ws_io_num = 22,    // IIS_LCLK   was 32
-      .data_out_num = -1, // IIS_DSIN
-      .data_in_num = 21,  // IIS_DOUT   was 33
+        // WROVER
+        .bck_io_num = 26,   // IIS_SCLK
+        .ws_io_num = 22,    // IIS_LCLK   was 32
+        .data_out_num = -1, // IIS_DSIN
+        .data_in_num = 21,  // IIS_DOUT   was 33
 #endif
-  };
+    };
 
-  input = new I2SMEMSSampler(I2S_NUM_0, i2s_mic_pins, i2s_mic_Config);
+    input = new I2SMEMSSampler(I2S_NUM_0, i2s_mic_pins, i2s_mic_Config);
 
-  // TODO: This an error??? input->register_wavFileWriter(writer);
+    // TODO: This an error??? input->register_wavFileWriter(writer);
 
-  return ESP_OK;
-}
+    return ESP_OK;
+  }
 #else
-static int i2s_init(uint32_t sampling_rate)
-{
-  // Start listening for audio: MONO @ 8/16KHz
-  i2s_config_t i2s_config = {
-      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_TX),
-      .sample_rate = sampling_rate,
-      .bits_per_sample = (i2s_bits_per_sample_t)16,
-      .channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT,
-      .communication_format = I2S_COMM_FORMAT_I2S,
-      .intr_alloc_flags = 0,
-      .dma_buf_count = 8,
-      .dma_buf_len = 512,
-      .use_apll = false,
-      .tx_desc_auto_clear = false,
-      .fixed_mclk = -1,
-  };
-  i2s_pin_config_t pin_config = {
-      .bck_io_num = 18,   // IIS_SCLK
-      .ws_io_num = 5,     // IIS_LCLK
-      .data_out_num = -1, // IIS_DSIN
-      .data_in_num = 19,  // IIS_DOUT
-  };
-  esp_err_t ret = 0;
-
-  ret = i2s_driver_install((i2s_port_t)1, &i2s_config, 0, NULL);
-  if (ret != ESP_OK)
+  static int i2s_init(uint32_t sampling_rate)
   {
-    ei_printf("Error in i2s_driver_install");
-  }
+    // Start listening for audio: MONO @ 8/16KHz
+    i2s_config_t i2s_config = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_TX),
+        .sample_rate = sampling_rate,
+        .bits_per_sample = (i2s_bits_per_sample_t)16,
+        .channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT,
+        .communication_format = I2S_COMM_FORMAT_I2S,
+        .intr_alloc_flags = 0,
+        .dma_buf_count = 8,
+        .dma_buf_len = 512,
+        .use_apll = false,
+        .tx_desc_auto_clear = false,
+        .fixed_mclk = -1,
+    };
+    i2s_pin_config_t pin_config = {
+        .bck_io_num = 18,   // IIS_SCLK
+        .ws_io_num = 5,     // IIS_LCLK
+        .data_out_num = -1, // IIS_DSIN
+        .data_in_num = 19,  // IIS_DOUT
+    };
+    esp_err_t ret = 0;
 
-  ret = i2s_set_pin((i2s_port_t)1, &pin_config);
-  if (ret != ESP_OK)
-  {
-    ei_printf("Error in i2s_set_pin");
-  }
+    ret = i2s_driver_install((i2s_port_t)1, &i2s_config, 0, NULL);
+    if (ret != ESP_OK)
+    {
+      ei_printf("Error in i2s_driver_install");
+    }
 
-  ret = i2s_zero_dma_buffer((i2s_port_t)1);
-  if (ret != ESP_OK)
-  {
-    ei_printf("Error in initializing dma buffer with 0");
-  }
+    ret = i2s_set_pin((i2s_port_t)1, &pin_config);
+    if (ret != ESP_OK)
+    {
+      ei_printf("Error in i2s_set_pin");
+    }
 
-  return int(ret);
-}
+    ret = i2s_zero_dma_buffer((i2s_port_t)1);
+    if (ret != ESP_OK)
+    {
+      ei_printf("Error in initializing dma buffer with 0");
+    }
+
+    return int(ret);
+  }
 #endif
-static int i2s_deinit(void)
-{
-  i2s_driver_uninstall((i2s_port_t)1); // stop & destroy i2s driver
-  return 0;
-}
+  static int i2s_deinit(void)
+  {
+    i2s_driver_uninstall((i2s_port_t)1); // stop & destroy i2s driver
+    return 0;
+  }
 
 #if !defined(EI_CLASSIFIER_SENSOR) || EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_MICROPHONE
 #error "Invalid model for current sensor."
