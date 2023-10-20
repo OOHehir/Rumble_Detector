@@ -17,15 +17,15 @@ public:
    * Active buffer -> fill with data
    * Inactive buffer -> write to file
    * These are public to alow access from I2SMEMSSampler
-   * @param buffer_active which buffer is active?
-   * @param buffer_idx[2] index of next element to write to
-   * @param buffer[2][16000] 2 buffers of 16000 elements each, 1 active, 1 inactive
+   * @param buf_select which buffer is active?
+   * @param buf_count index of next element to write to
+   * @param buffers[2][16000] 2 buffers of 16000 elements each, 1 active, 1 inactive
    */
-  size_t buffer_active = 0;
+  size_t buf_select = 0;
   bool buffer_ready_to_save = false;
   const static size_t buffer_size = 16000;
-  size_t buffer_idx[2];
-  signed short buffer[2][buffer_size];
+  size_t buf_count;
+  signed short buffers[2][buffer_size];
 
   /**
    * @brief Construct a new WAVFileWriter object
@@ -73,7 +73,7 @@ public:
 
   /**
    * @brief Create header and write to file
-   * @note This will reset the buffer_idx to 0
+   * @note This will reset the buf_count to 0
    * @return true success
    */
   bool finish();

@@ -11,12 +11,10 @@ WAVFileWriter::WAVFileWriter(FILE *fp, int sample_rate)
   fwrite(&m_header, sizeof(wav_header_t), 1, m_fp);
   m_file_size = sizeof(wav_header_t);
 
-  buffer_active = 0;
-  buffer_idx[0] = 0;
-  buffer_idx[1] = 0;
-  
-  buffer[0][0] = {0};
-  buffer[1][0] = {0};
+  buf_select = 0;
+  buf_count = 0;
+  buffers[0][0] = {0};
+  buffers[1][0] = {0};
 }
 
 bool WAVFileWriter::buffer_is_full(){
@@ -30,18 +28,18 @@ bool WAVFileWriter::buffer_is_full(){
 void WAVFileWriter::swap_buffers(){
   // TODO: Need thread mutex??
   // swap buffers
-  if (++buffer_active > 1)
-    buffer_active = 0;
+  if (++buf_select > 1)
+    buf_select = 0;
   
-  buffer_idx[buffer_active] = 0;
+  buf_count = 0;
 
-  ESP_LOGI(TAG, "buffer_active = %d", buffer_active);
+  ESP_LOGI(TAG, "buffer_active = %d", buf_select);
 
 }
 
 void WAVFileWriter::write()
 {
-  auto buffer_inactive = buffer_active ? 0 : 1;
+  auto buffer_inactive = buf_select ? 0 : 1;
   
   ESP_LOGI(TAG, "Writing wav file size: %d", m_file_size);
   
@@ -50,11 +48,10 @@ void WAVFileWriter::write()
     return;
   }
 
-  fwrite(buffer[buffer_inactive], sizeof(int16_t), buffer_idx[buffer_inactive], m_fp);
-  m_file_size += sizeof(int16_t) * buffer_idx[buffer_inactive];
+  fwrite(buffers[buffer_inactive], sizeof(int16_t), buffer_size, m_fp);
+  m_file_size += sizeof(int16_t) * buffer_size;
 
   // Don't swap buffers here, wait for buffer_is_full() to do it
-
   buffer_ready_to_save = false;
 
 }

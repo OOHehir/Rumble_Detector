@@ -9,7 +9,7 @@ private:
     adc1_channel_t m_adcChannel;
 
 protected:
-    void configureI2S();
+    bool configureI2S();
     void unConfigureI2S();
 
 public:

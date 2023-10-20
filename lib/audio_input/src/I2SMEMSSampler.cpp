@@ -16,9 +16,10 @@ I2SMEMSSampler::I2SMEMSSampler(
     i2s_sampling_rate = i2s_config.sample_rate;
 
     writer = nullptr;
+    inference = {};
 }
 
-void I2SMEMSSampler::configureI2S()
+bool I2SMEMSSampler::configureI2S()
 {
     if (m_fixSPH0645)
     {
@@ -27,7 +28,13 @@ void I2SMEMSSampler::configureI2S()
         REG_SET_BIT(I2S_CONF_REG(m_i2sPort), I2S_RX_MSB_SHIFT);
     }
 
-    i2s_set_pin(m_i2sPort, &m_i2sPins);
+    auto ret = i2s_set_pin(m_i2sPort, &m_i2sPins);
+
+    if (ret != ESP_OK){
+        ESP_LOGE(TAG, "Func: %s, error i2s_set_pin", __func__);
+    }
+
+    return ret;
 }
 
 bool I2SMEMSSampler::register_wavFileWriter(WAVFileWriter *ext_writer){
@@ -62,7 +69,11 @@ int I2SMEMSSampler::read(int count)
     //     return 0;
     // }
 
-    // read from i2s
+
+    // Increase volume of sample
+    #define I2S_SCALING_FACTOR 1 
+
+    // Allocate a buffer of BYTES sufficient for sample size
     int32_t *raw_samples = (int32_t *)malloc(sizeof(int32_t) * count);
 
     if (raw_samples == NULL)
@@ -81,7 +92,7 @@ int I2SMEMSSampler::read(int count)
         if EI_CLASSIFIER_FREQUENCY = 8000Hz & I2S sample rate = 16000Hz > ei_skip_rate = 2
         if EI_CLASSIFIER_FREQUENCY = 16000Hz & I2S sample rate = 16000Hz > ei_skip_rate = 1
 
-        // TODO: Test what happens when not an even multiple!
+        TODO: Test what happens when not an even multiple!
     */
     auto skip_current = 1;
     
@@ -96,29 +107,29 @@ int I2SMEMSSampler::read(int count)
     
     for (int i = 0; i < samples_read; i++)
     {   
-        
-        //ESP_LOGI(TAG, "buffer_idx[] = %d", writer->buffer_idx[writer->buffer_active]);
-        //ESP_LOGI(TAG, "buffer_active = %d", writer->buffer_active);
-        
         // For the SPH0645LM4H-B MEMS microphone
         // The Data Format is I2S, 24-bit, 2’s compliment, MSB first.
         // The data precision is 18 bits; unused bits are zeros.
-
         // We need to store data in 16 bits so need to drop lower 16 bits
+        auto processed_sample = (raw_samples[i] >> 11) * I2S_SCALING_FACTOR;    
 
         // Store into wav file buffer
-        if (writer->buffer_idx[writer->buffer_active] < writer->buffer_size){
-            writer->buffer[writer->buffer_active][writer->buffer_idx[writer->buffer_active]] = raw_samples[i] >> 11;
-            writer->buffer_idx[writer->buffer_active]++;
-        }
-        else{
-            writer->buffer_is_full();  // Swap buffers and set buffer_ready_to_save = true
-            writer->write();
+        writer->buffers[writer->buf_select][writer->buf_count++] = processed_sample;
+
+        if (writer->buf_count >= writer->buffer_size){
+            // Swap buffers and set buffer_ready_to_save = true
+            writer->buf_select ^= 1;
+            writer->buf_count = 0;
+            writer->buffer_ready_to_save = true;
         }
         
+        //ESP_LOGI(TAG, "buf_count = %d", writer->buf_count);
+        //ESP_LOGI(TAG, "buf_select = %d", writer->buf_select);
+
         // Store into edge-impulse buffer taking into requirement to skip if necessary
         if (skip_current >= ei_skip_rate){
-            inference.buffers[inference.buf_select][inference.buf_count++] = raw_samples[i] >> 11;
+
+            inference.buffers[inference.buf_select][inference.buf_count++] = processed_sample;
             skip_current = 1;
 
             if (inference.buf_count >= inference.n_samples)

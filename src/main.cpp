@@ -568,8 +568,7 @@ static bool microphone_inference_start(uint32_t n_samples)
  */
 static bool microphone_inference_record(void)
 {
-  ESP_LOGI(TAG, "%s", __func__);
-  ESP_LOGI(TAG, "%s", __PRETTY_FUNCTION__);
+  ESP_LOGI(TAG, "Func: %s", __func__);
 
   bool ret = true;
 
@@ -611,9 +610,10 @@ static void microphone_inference_end(void)
 
 
 #ifdef USE_I2S_MIC_INPUT
+
 static int i2s_init(uint32_t sampling_rate)
 {
-  // i2s config for reading from I2S
+  // Start listening for audio: MONO, 32Bit
   i2s_config_t i2s_mic_Config = {
       .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
       .sample_rate = sampling_rate,
@@ -654,7 +654,7 @@ static int i2s_init(uint32_t sampling_rate)
 
   input = new I2SMEMSSampler(I2S_NUM_0, i2s_mic_pins, i2s_mic_Config);
 
-  return ESP_OK;
+  return int(input->zero_dma_buffer(I2S_NUM_0));
 }
 #else
 static int i2s_init(uint32_t sampling_rate)
@@ -704,7 +704,7 @@ static int i2s_init(uint32_t sampling_rate)
 #endif
 static int i2s_deinit(void)
 {
-  i2s_driver_uninstall((i2s_port_t)1); // stop & destroy i2s driver
+  i2s_driver_uninstall((i2s_port_t)I2S_NUM_0); // stop & destroy i2s driver
   return 0;
 }
 
