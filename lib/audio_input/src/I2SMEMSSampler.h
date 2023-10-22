@@ -19,7 +19,7 @@ private:
     // i.e. if I2S sample rate = 16000 Hz & EI_CLASSIFIER_FREQUENCY = 4000Hz
     // ei_skip_rate = 4
     int ei_skip_rate = 1;
-    inference_t inference;
+    inference_t *inference;
 
 protected:
     bool configureI2S();
@@ -30,7 +30,15 @@ public:
         i2s_pin_config_t &i2s_pins,
         i2s_config_t i2s_config,
         bool fixSPH0645 = false);
-    
+
+    /**
+     * @brief Zero the appropiate TX DMA buffer for the I2S port
+     * @note This is required to prevent a pop at the start of the audio
+     * @note This is only required for TX (i.e. recording)
+     * @return true on success
+    */
+    virtual bool zero_dma_buffer(i2s_port_t i2sPort);
+
     /**
      * @brief Register an external WAVFileWriter
      * @note This object will fill the WAVFileWriter buffer during reads
@@ -48,7 +56,7 @@ public:
      * @param ext_ei_sampling_freq the sampling frequency of the Edge Impulse model
      * @return true success
     */
-    virtual bool register_ei_inference(inference_t ext_inference, int ext_ei_sampling_freq);
+    virtual bool register_ei_inference(inference_t *ext_inference, int ext_ei_sampling_freq);
     
     /**
      * @brief Read I2S samples from DMA buffer
