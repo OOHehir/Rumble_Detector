@@ -6,12 +6,12 @@ ADCSampler::ADCSampler(adc_unit_t adcUnit, adc1_channel_t adcChannel, const i2s_
     m_adcChannel = adcChannel;
 }
 
-void ADCSampler::configureI2S()
+bool ADCSampler::configureI2S()
 {
     //init ADC pad
     i2s_set_adc_mode(m_adcUnit, m_adcChannel);
     // enable the adc
-    i2s_adc_enable(m_i2sPort);
+    return (i2s_adc_enable(m_i2sPort));
 }
 
 void ADCSampler::unConfigureI2S()
