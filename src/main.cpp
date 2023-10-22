@@ -195,7 +195,6 @@ void setup()
   ESP_LOGI(TAG, "\tNo. of classes: %d", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
 
 #ifdef SDCARD_WRITING_ENABLED
-  ESP_LOGI(TAG, "Mounting SDCard on /sdcard\n");
   sd_card = new SDCard("/sdcard", PIN_NUM_MISO, PIN_NUM_MOSI, PIN_NUM_CLK, PIN_NUM_CS);
   ei_sleep(200);
 
@@ -283,7 +282,7 @@ void app_main(void)
 
     if (fp == NULL)
     {
-      sprintf(file_name, "/sdcard/eloc/test%d.wav", file_idx++);
+      sprintf(file_name, "/sdcard/eloc/test%d.wav", file_idx);
       ESP_LOGI(TAG, "Saving audio to %s", file_name);
 
       // open the file on the sdcard
@@ -340,34 +339,41 @@ void app_main(void)
     ESP_LOGI(TAG, "Predictions ");
     ESP_LOGI(TAG, "(DSP: %d ms., Classification: %d ms., Anomaly: %d ms.)",
              result.timing.dsp, result.timing.classification, result.timing.anomaly);
-    ESP_LOGI(TAG, ": \n");
     for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
     {
-      ESP_LOGI(TAG, "    %s: ", result.classification[ix].label);
-      ei_printf_float(result.classification[ix].value);
-      ESP_LOGI(TAG, "\n");
+      ESP_LOGI(TAG, "    %s: %f", result.classification[ix].label, result.classification[ix].value);
     }
     // Check if the first classification value is higher than 0.5
-    if (result.classification[1].value > 0.6)
-    {
-      ledState = true; // Set ledState to true to initiate the blinking sequence
-    }
+    // if (result.classification[1].value > 0.6)
+    // {
+    //   ledState = true; // Set ledState to true to initiate the blinking sequence
+    // }
 
-    // Update the LED state
-    updateLedState();
+    // // Update the LED state
+    // updateLedState();
 
 #ifdef SDCARD_WRITING_ENABLED
 
-    if (writer != nullptr && writer->ready_to_save() == true)
-    {
+    // if (writer != nullptr && writer->ready_to_save() == true)
+    // {
 
-      writer->write();
+    //   writer->write();
 
-      // write buffer
-      // writer->write(recordBuffer, record_buffer_idx);
-      // file_size += record_buffer_idx;
+    //   if (writer->get_file_size() >= EI_CLASSIFIER_RAW_SAMPLE_COUNT * RECORDING_TIME)
+    //   {
+    //     // TODO: Figure out how to save active buffer portion
+    //     // and finish the writing
+    //     ESP_LOGI(TAG, "Finishing SD writing\n");
+    //     writer->finish();
+    //     fclose(fp);
+    //     delete writer;
+    //     file_idx++;
+    //     fp = NULL;
+    //     writer = nullptr;
+    //   }
+    // }
 
-      if (writer->get_file_size() >= EI_CLASSIFIER_RAW_SAMPLE_COUNT * RECORDING_TIME)
+    if (writer != nullptr && writer->get_file_size() >= EI_CLASSIFIER_RAW_SAMPLE_COUNT * RECORDING_TIME)
       {
         // TODO: Figure out how to save active buffer portion
         // and finish the writing
@@ -379,7 +385,6 @@ void app_main(void)
         fp = NULL;
         writer = nullptr;
       }
-    }
 
     // reset recording buffer
     // record_buffer_idx = 0;
@@ -389,6 +394,7 @@ void app_main(void)
     ESP_LOGI(TAG, "    anomaly score: ");
     ESP_LOGI(TAG, result.anomaly);
 #endif
+
   }
 }
 
@@ -426,7 +432,6 @@ static void capture_samples(void *arg)
 {
 
   ESP_LOGI(TAG, "%s", __func__);
-  ESP_LOGI(TAG, "%s", __PRETTY_FUNCTION__);
 
   const int32_t i2s_bytes_to_read = (uint32_t)arg;
 
@@ -440,8 +445,8 @@ static void capture_samples(void *arg)
   }
   else
   {
-    input->register_ei_inference(inference, EI_CLASSIFIER_FREQUENCY);
-    input->start();
+    input->register_ei_inference(&inference, EI_CLASSIFIER_FREQUENCY);
+    //input->start();
   }
 
   // Enter a continual loop to collect new data from I2S
@@ -467,7 +472,7 @@ static void capture_samples(void *arg)
     // }
   }
 
-  input->stop();
+  //input->stop();
   vTaskDelete(NULL);
 }
 #else
@@ -554,6 +559,7 @@ static bool microphone_inference_start(uint32_t n_samples)
   record_status = true;
 
   // xTaskCreate(capture_samples, "CaptureSamples", 1024 * 16, (void*)sample_buffer_size, 10, NULL);
+  // Create a task with size of the stack that will be allocated to the task being created (in words, not bytes!)
   xTaskCreate(capture_samples, "CaptureSamples", 1024 * 32, (void *)sample_buffer_size, 10, NULL);
 
   return true;
@@ -568,23 +574,33 @@ static bool microphone_inference_start(uint32_t n_samples)
  */
 static bool microphone_inference_record(void)
 {
-  ESP_LOGI(TAG, "Func: %s", __func__);
+  // ESP_LOGI(TAG, "Func: %s", __func__);
 
   bool ret = true;
 
-  if (inference.buf_ready == 1)
-  {
-    ESP_LOGE(TAG, "Error sample buffer overrun. Decrease the number of slices per model window "
-        "(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW)");
-    ret = false;
-  }
+  // Expect buffer to be ready??
+  // if (inference.buf_ready == 1)
+  // {
+  //   ESP_LOGE(TAG, "Error sample buffer overrun. Decrease the number of slices per model window "
+  //       "(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW)");
+  //   ret = false;
+  // }
 
   while (inference.buf_ready == 0)
   {
-    delay(1);
+    // NOTE: Trying to write audio out here seems to leads to poor audio performance?
+    if(writer->buf_ready == 1){
+      writer->write();
+    }
+    else
+    {
+      delay(1);
+    }
+    
   }
 
   inference.buf_ready = 0;
+  
   return true;
 }
 
@@ -615,7 +631,7 @@ static int i2s_init(uint32_t sampling_rate)
 {
   // Start listening for audio: MONO, 32Bit
   i2s_config_t i2s_mic_Config = {
-      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
+      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_TX),
       .sample_rate = sampling_rate,
       .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
       .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
@@ -653,8 +669,9 @@ static int i2s_init(uint32_t sampling_rate)
   };
 
   input = new I2SMEMSSampler(I2S_NUM_0, i2s_mic_pins, i2s_mic_Config);
-
-  return int(input->zero_dma_buffer(I2S_NUM_0));
+  input->start(); // Actually installs the driver
+  input->zero_dma_buffer(I2S_NUM_0);
+  return 0;
 }
 #else
 static int i2s_init(uint32_t sampling_rate)
