@@ -558,9 +558,8 @@ static bool microphone_inference_start(uint32_t n_samples)
 
   record_status = true;
 
-  // xTaskCreate(capture_samples, "CaptureSamples", 1024 * 16, (void*)sample_buffer_size, 10, NULL);
-  // Create a task with size of the stack that will be allocated to the task being created (in words, not bytes!)
-  xTaskCreate(capture_samples, "CaptureSamples", 1024 * 32, (void *)sample_buffer_size, 10, NULL);
+  // Stack size of 16K - experimentally determined
+  xTaskCreate(capture_samples, "CaptureSamples", 1024 * 16, (void*)sample_buffer_size, 10, NULL);
 
   return true;
 }
