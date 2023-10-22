@@ -30,16 +30,22 @@ public:
      * @brief Zero the appropiate DMA buffer for the I2S port
      * @return true on success
     */
-    bool zero_dma_buffer(i2s_port_t i2sPort);
+    virtual bool zero_dma_buffer(i2s_port_t i2sPort) = 0;
 
     /**
-     * @brief Start the I2S port
+     * @brief Install the I2S port
+     * TODO: This really should be renamed install, not start
      * @return true on success
     */
     bool start();
 
-
     virtual int read(int count) = 0;
+    
+    /**
+     * @brief Unintsall the I2S port
+     * TODO: This really should be renamed uninstall, not stop
+     * 
+     */
     void stop();
     
     int sample_rate()

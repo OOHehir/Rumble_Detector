@@ -9,18 +9,6 @@ I2SSampler::I2SSampler(i2s_port_t i2sPort, const i2s_config_t &i2s_config) : m_i
 {
 }
 
-bool I2SSampler::zero_dma_buffer(i2s_port_t i2sPort)
-{
-    auto ret = i2s_zero_dma_buffer((i2s_port_t) i2sPort);
-
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Func: %s, i2s_zero_dma_buffer", __func__);
-    }
-
-    return ret;
-}
-
 bool I2SSampler::start()
 {
     auto ret = false;
