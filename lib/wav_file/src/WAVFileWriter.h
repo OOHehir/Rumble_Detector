@@ -22,10 +22,10 @@ public:
    * @param buffers[2][16000] 2 buffers of 16000 elements each, 1 active, 1 inactive
    */
   size_t buf_select = 0;
-  bool buffer_ready_to_save = false;
+  int buf_ready = 0;
   const static size_t buffer_size = 16000;
   size_t buf_count;
-  signed short buffers[2][buffer_size];
+  int16_t buffers[2][buffer_size];
 
   /**
    * @brief Construct a new WAVFileWriter object
@@ -49,11 +49,11 @@ public:
    * @brief Get wether file ready to save
    * @return true if ready to save
    */
-  bool ready_to_save() {return buffer_ready_to_save;}
+  int ready_to_save() {return buf_ready;}
 
   /**
    * @brief Called when a buffer is full
-   * @note This will swap the buffers and set buffer_ready_to_save = true
+   * @note This will swap the buffers and set buf_ready
    * 
    * @return true success
    * @return false 

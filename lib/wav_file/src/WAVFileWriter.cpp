@@ -20,7 +20,7 @@ WAVFileWriter::WAVFileWriter(FILE *fp, int sample_rate)
 bool WAVFileWriter::buffer_is_full(){
   
   this->swap_buffers();
-  buffer_ready_to_save = true;
+  buf_ready = 1;
 
   return true;
 }
@@ -51,9 +51,8 @@ void WAVFileWriter::write()
   fwrite(buffers[buffer_inactive], sizeof(int16_t), buffer_size, m_fp);
   m_file_size += sizeof(int16_t) * buffer_size;
 
-  // Don't swap buffers here, wait for buffer_is_full() to do it
-  buffer_ready_to_save = false;
-
+  // Don't swap buffers here, I2MEMSSampler::read() to do it
+  buf_ready = 0;
 }
 
 bool WAVFileWriter::finish()
