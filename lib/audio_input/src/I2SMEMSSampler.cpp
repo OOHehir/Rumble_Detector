@@ -143,7 +143,8 @@ int I2SMEMSSampler::read(int count)
                 writer->buf_count = 0;
                 writer->buf_ready = 1;
 
-                // writer->write();
+                // TODO: Experiment with writing to SD card here
+                writer->write();
         }
         else{
             }
