@@ -356,10 +356,11 @@ void app_main(void)
 
 #ifdef SDCARD_WRITING_ENABLED
 
-    // if (writer != nullptr && writer->ready_to_save() == true)
-    // {
+    if (writer != nullptr && writer->ready_to_save() == true)
+    {
 
-    //   writer->write();
+      writer->write();
+    }
 
     //   if (writer->get_file_size() >= EI_CLASSIFIER_RAW_SAMPLE_COUNT * RECORDING_TIME)
     //   {
@@ -446,6 +447,10 @@ static void capture_samples(void *arg)
   while (record_status)
   {
     int samples_read = input->read(i2s_samples_to_read);
+
+    if (samples_read != i2s_samples_to_read){
+      ESP_LOGW(TAG, "samples_read = %d, i2s_samples_to_read = %d", samples_read, i2s_samples_to_read);
+    }
 
     // Buffers loaded in I2MEMSampler
 
@@ -581,12 +586,13 @@ static bool microphone_inference_record(void)
 
   bool ret = true;
 
-  if (inference.buf_ready == 1)
-  {
-    ESP_LOGE(TAG, "Error sample buffer overrun. Decrease the number of slices per model window "
-        "(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW)");
-    ret = false;
-  }
+  // TODO: Expect this to be set as loading from another point?
+  // if (inference.buf_ready == 1)
+  // {
+  //   ESP_LOGE(TAG, "Error sample buffer overrun. Decrease the number of slices per model window "
+  //       "(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW)");
+  //   ret = false;
+  // }
 
   while (inference.buf_ready == 0)
   {
@@ -642,7 +648,7 @@ static int i2s_init(uint32_t sampling_rate)
       .dma_buf_len = 1024,
       .use_apll = true,
       .tx_desc_auto_clear = false,
-      .fixed_mclk = -1};
+      .fixed_mclk = 0};
 
   // i2s microphone pins
   // i2s_pin_config_t i2s_mic_pins = {

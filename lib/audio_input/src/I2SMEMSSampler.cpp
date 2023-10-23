@@ -73,16 +73,10 @@ bool I2SMEMSSampler::register_ei_inference(inference_t *ext_inference, int ext_e
 
 int I2SMEMSSampler::read(int count)
 {
-    // ESP_LOGI(TAG, "%s", __func__);
-
-    // TODO: Check if writer is registered
-    // if(writer == nullptr){
-    //     ESP_LOGE(TAG, "read() - WAVFileWriter not registered");
-    //     return 0;
-    // }
+    ESP_LOGV(TAG, "Func: %s", __func__);
 
     // Increase volume of sample
-    #define I2S_SCALING_FACTOR 1 
+    #define I2S_SCALING_FACTOR 6
 
     // Allocate a buffer of BYTES sufficient for sample size
     int32_t *raw_samples = (int32_t *)malloc(sizeof(int32_t) * count);
@@ -120,8 +114,8 @@ int I2SMEMSSampler::read(int count)
     if (bytes_read <= 0) {
       ESP_LOGE(TAG, "Error in I2S read : %d", bytes_read);
     }
-    else {
-
+    else 
+    {
         if (bytes_read < sizeof(int32_t) * count) {
             ESP_LOGW(TAG, "Partial I2S read");
         }
@@ -131,8 +125,8 @@ int I2SMEMSSampler::read(int count)
             // For the SPH0645LM4H-B MEMS microphone
             // The Data Format is I2S, 24-bit, 2’s compliment, MSB first.
             // The data precision is 18 bits; unused bits are zeros.
-            // We need to store data in 16 bits so need to drop lower 16 bits
-            int16_t processed_sample = (raw_samples[i] >> 11) * I2S_SCALING_FACTOR;    
+            // Note! Scale data, then shift to 18 bits, otherwise lose lower end volume
+            int16_t processed_sample = (raw_samples[i] * I2S_SCALING_FACTOR) >> 14;  
 
             // Store into wav file buffer
             writer->buffers[writer->buf_select][writer->buf_count++] = processed_sample;
@@ -143,10 +137,7 @@ int I2SMEMSSampler::read(int count)
                 writer->buf_count = 0;
                 writer->buf_ready = 1;
 
-                // TODO: Experiment with writing to SD card here
-                writer->write();
-        }
-        else{
+                // Note: Trying to write to SD card here causes poor performance
             }
 
             // Store into edge-impulse buffer taking into requirement to skip if necessary
