@@ -328,7 +328,9 @@ void app_main(void)
     signal.get_data = &microphone_audio_signal_get_data;
     ei_impulse_result_t result = {0};
 
-    EI_IMPULSE_ERROR r = run_classifier(&signal, &result, debug_nn);
+    // If changing to non-continuous ensure to use:
+    // EI_IMPULSE_ERROR r = run_classifier(&signal, &result, debug_nn);
+    EI_IMPULSE_ERROR r = run_classifier_continuous(&signal, &result, debug_nn);
     if (r != EI_IMPULSE_OK)
     {
       ESP_LOGE(TAG, "ERR: Failed to run classifier (%d)", r);
@@ -427,6 +429,7 @@ static void audio_inference_callback(uint32_t n_bytes)
  *  1. reads data from I2S DMA buffer,
  *  2. scales it
  *  3. Calls audio_inference_callback()
+ * @note: Explanation: https://forum.edgeimpulse.com/t/trouble-understanding-microphone-continuous/7416
  */
 static void capture_samples(void *arg)
 {
@@ -438,16 +441,6 @@ static void capture_samples(void *arg)
   // logical right shift divides a number by 2, throwing out any remainders
   // Need to divide by 2 because reading bytes into a int16_t buffer
   size_t i2s_samples_to_read = i2s_bytes_to_read >> 1;
-
-  if (input == nullptr)
-  {
-    ESP_LOGE(TAG, "%s - MEMSampler == nullptr", __func__);
-  }
-  else
-  {
-    input->register_ei_inference(&inference, EI_CLASSIFIER_FREQUENCY);
-    //input->start();
-  }
 
   // Enter a continual loop to collect new data from I2S
   while (record_status)
@@ -558,7 +551,18 @@ static bool microphone_inference_start(uint32_t n_samples)
 
   record_status = true;
 
+  if (input == nullptr)
+  {
+    ESP_LOGE(TAG, "%s - MEMSampler == nullptr", __func__);
+  }
+  else
+  {
+    input->register_ei_inference(&inference, EI_CLASSIFIER_FREQUENCY);
+  }
+
   // Stack size of 16K - experimentally determined
+  // (void*)sample_buffer_size - pass in the number of samples to read
+  // Should match 
   xTaskCreate(capture_samples, "CaptureSamples", 1024 * 16, (void*)sample_buffer_size, 10, NULL);
 
   return true;
@@ -573,29 +577,27 @@ static bool microphone_inference_start(uint32_t n_samples)
  */
 static bool microphone_inference_record(void)
 {
-  // ESP_LOGI(TAG, "Func: %s", __func__);
+  ESP_LOGV(TAG, "Func: %s", __func__);
 
   bool ret = true;
 
-  // Expect buffer to be ready??
-  // if (inference.buf_ready == 1)
-  // {
-  //   ESP_LOGE(TAG, "Error sample buffer overrun. Decrease the number of slices per model window "
-  //       "(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW)");
-  //   ret = false;
-  // }
+  if (inference.buf_ready == 1)
+  {
+    ESP_LOGE(TAG, "Error sample buffer overrun. Decrease the number of slices per model window "
+        "(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW)");
+    ret = false;
+  }
 
   while (inference.buf_ready == 0)
   {
     // NOTE: Trying to write audio out here seems to leads to poor audio performance?
-    if(writer->buf_ready == 1){
-      writer->write();
-    }
-    else
-    {
+    // if(writer->buf_ready == 1){
+    //   writer->write();
+    // }
+    // else
+    // {
       delay(1);
-    }
-    
+    //}
   }
 
   inference.buf_ready = 0;
@@ -630,7 +632,7 @@ static int i2s_init(uint32_t sampling_rate)
 {
   // Start listening for audio: MONO, 32Bit
   i2s_config_t i2s_mic_Config = {
-      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_TX),
+      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
       .sample_rate = sampling_rate,
       .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
       .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
@@ -640,7 +642,7 @@ static int i2s_init(uint32_t sampling_rate)
       .dma_buf_len = 1024,
       .use_apll = true,
       .tx_desc_auto_clear = false,
-      .fixed_mclk = 0};
+      .fixed_mclk = -1};
 
   // i2s microphone pins
   // i2s_pin_config_t i2s_mic_pins = {
