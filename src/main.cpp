@@ -56,6 +56,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include "ei_inference.h"
+#include "config_build.h"
 
 static void capture_samples(void *arg);
 static int i2s_deinit(void);
@@ -77,15 +78,11 @@ static bool record_status = true;
 I2SMEMSSampler *input = nullptr;
 #endif
 
-// set the gain. 0 = No sound; 1 = No gain; Everything >1 equals more gain depending on the number
-#define SDCARD_WRITING_ENABLED
-
-// #define ELOC_BOARD
 #ifdef SDCARD_WRITING_ENABLED
-#define SDCARD_BUFFER 50 * 1024
-SDCard *sd_card = nullptr;
-WAVFileWriter *writer = nullptr;
-#define RECORDING_TIME 30
+  #define SDCARD_BUFFER 50 * 1024
+  SDCard *sd_card = nullptr;
+  WAVFileWriter *writer = nullptr;
+  #define RECORDING_TIME 30
 #endif
 
 // sdcard (unused, as SDIO is fixed to its Pins)
@@ -391,7 +388,13 @@ void app_main(void)
 
     // reset recording buffer
     // record_buffer_idx = 0;
+#else
+
+  // Feed the dog..
+  delay(1);
+
 #endif
+
 
 #if EI_CLASSIFIER_HAS_ANOMALY == 1
     ESP_LOGI(TAG, "    anomaly score: ");

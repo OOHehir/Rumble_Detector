@@ -128,6 +128,7 @@ int I2SMEMSSampler::read(int count)
             // Note! Scale data, then shift to 18 bits, otherwise lose lower end volume
             int16_t processed_sample = (raw_samples[i] * I2S_SCALING_FACTOR) >> 14;  
 
+        #ifdef SDCARD_WRITING_ENABLED
             // Store into wav file buffer
             writer->buffers[writer->buf_select][writer->buf_count++] = processed_sample;
 
@@ -139,6 +140,7 @@ int I2SMEMSSampler::read(int count)
 
                 // Note: Trying to write to SD card here causes poor performance
             }
+        #endif // SDCARD_WRITING_ENABLED
 
             // Store into edge-impulse buffer taking into requirement to skip if necessary
             if (skip_current >= ei_skip_rate){

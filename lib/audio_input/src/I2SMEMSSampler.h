@@ -3,6 +3,7 @@
 #include "I2SSampler.h"
 #include "WAVFileWriter.h"
 #include "/home/projects/Rumble_Detector/include/ei_inference.h"
+#include "/home/projects/Rumble_Detector/include/config_build.h"
 class I2SMEMSSampler : public I2SSampler
 {
 private:
