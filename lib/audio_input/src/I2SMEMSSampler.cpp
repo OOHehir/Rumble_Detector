@@ -63,12 +63,15 @@ bool I2SMEMSSampler::register_wavFileWriter(WAVFileWriter *ext_writer){
 
 bool I2SMEMSSampler::register_ei_inference(inference_t *ext_inference, int ext_ei_sampling_freq){
 
+    ESP_LOGV(TAG, "Func: %s", __func__);
+
     inference = ext_inference;
     ei_sampling_freq = ext_ei_sampling_freq;
     ei_skip_rate = i2s_sampling_rate / ei_sampling_freq;
 
-    return true;
+    ESP_LOGV(TAG, "i2s_sampling_rate = %d, ei_sampling_freq = %d, ei_skip_rate = %d", i2s_sampling_rate, ei_sampling_freq, ei_skip_rate);
 
+    return true;
 }
 
 int I2SMEMSSampler::read(int count)
@@ -144,6 +147,7 @@ int I2SMEMSSampler::read(int count)
 
             // Store into edge-impulse buffer taking into requirement to skip if necessary
             if (skip_current >= ei_skip_rate){
+                ESP_LOGV(TAG, "Saving sample, skip_current = %d", skip_current);
 
                 inference->buffers[inference->buf_select][inference->buf_count++] = processed_sample;
                 skip_current = 1;
@@ -156,6 +160,7 @@ int I2SMEMSSampler::read(int count)
                 }
             }
             else{
+                ESP_LOGV(TAG, "Not saving sample, skip_current = %d", skip_current);
                 skip_current++;
             }
         }

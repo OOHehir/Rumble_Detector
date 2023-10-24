@@ -13,6 +13,7 @@
 #define CONFIG_H_
 
 //#define SDCARD_WRITING_ENABLED
+#define I2S_SAMPLING_FREQUENCY 16000
 
 
 

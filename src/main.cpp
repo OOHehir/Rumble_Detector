@@ -40,7 +40,7 @@
 
 /* Includes ---------------------------------------------------------------- */
 #include <Arduino.h>
-#include <trumpet_inferencing.h>
+#include <trumpet_trimmed_inferencing.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -550,7 +550,7 @@ static bool microphone_inference_start(uint32_t n_samples)
   inference.n_samples = n_samples;
   inference.buf_ready = 0;
 
-  if (i2s_init(EI_CLASSIFIER_FREQUENCY))
+  if (i2s_init(I2S_SAMPLING_FREQUENCY))
   {
     ESP_LOGI(TAG, "Failed to start I2S!");
   }
